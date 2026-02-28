@@ -1,0 +1,2 @@
+# Additional Python requirements (pip), one per line. Example:
+# requests==2.32.0

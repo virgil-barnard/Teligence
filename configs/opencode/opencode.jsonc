@@ -1,0 +1,13 @@
+{
+  // OpenCode config (keep this secretless; use env vars for keys).
+  // Docs: https://opencode.ai/docs/config/
+  "workspace": "/workspace",
+  "ui": {
+    "theme": "system"
+  },
+  "agent": {
+    // Example knobs; adjust to taste
+    "autoApplyEdits": false,
+    "maxIterations": 20
+  }
+}

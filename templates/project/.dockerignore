@@ -1,0 +1,6 @@
+# Keep build context lean
+workspace
+__pycache__
+*.pyc
+.git
+.gitignore

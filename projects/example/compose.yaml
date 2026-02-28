@@ -1,0 +1,3 @@
+# Example project overrides (optional)
+services:
+  agent: {}

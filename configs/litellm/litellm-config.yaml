@@ -1,0 +1,28 @@
+# LiteLLM Proxy config
+# - `model_name` is what clients send to the proxy.
+# - `litellm_params.model` is the provider/model route: <provider>/<model-id>
+# Docs: https://docs.litellm.ai/docs/proxy/configs
+
+model_list:
+  # OpenAI (upstream key is in configs/providers/providers.env)
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/UPSTREAM_OPENAI_API_KEY
+
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/UPSTREAM_OPENAI_API_KEY
+
+  # Anthropic (optional)
+  - model_name: claude-sonnet
+    litellm_params:
+      model: anthropic/claude-3-5-sonnet-20241022
+      api_key: os.environ/UPSTREAM_ANTHROPIC_API_KEY
+
+  # Local model via Ollama (enable PROFILES=ollama when you want this)
+  - model_name: llama3
+    litellm_params:
+      model: ollama/llama3
+      api_base: http://ollama:11434

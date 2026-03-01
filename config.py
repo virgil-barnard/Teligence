@@ -68,12 +68,12 @@ class GPTConfig:
 
     # run
     batch_size: int = int(os.environ.get("BATCH_SIZE", "32"))
-    num_updates: int = int(os.environ.get("NUM_UPDATES", "3000"))
+    num_updates: int = int(os.environ.get("NUM_UPDATES", "50000"))
     log_every: int = int(os.environ.get("LOG_EVERY", "50"))
     eval_every: int = int(os.environ.get("EVAL_EVERY", "50"))
     eval_tokens: int = int(os.environ.get("EVAL_TOKENS", "262144"))
     preview_prompt: str = os.environ.get("PREVIEW_PROMPT", "The ")
-    preview_max_new_tokens: int = int(os.environ.get("PREVIEW_MAX_NEW_TOKENS", "64"))
+    preview_max_new_tokens: int = int(os.environ.get("PREVIEW_MAX_NEW_TOKENS", "512"))
     save_every: int = int(os.environ.get("SAVE_EVERY", "500"))
     tokenizer: str = os.environ.get("TOKENIZER", "auto")
 

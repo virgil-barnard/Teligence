@@ -1,0 +1,11 @@
+services:
+  gpt:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    gpus: all
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./:/app
+    command: ["python", "gpt.py"]

@@ -28,6 +28,25 @@ docker compose run --rm \
   gpt
 ```
 
+Resume training options:
+
+- Resume same run directory (same run id): set `RUN_NAME` to the old run id.
+- Resume from another run id/path:
+  - `RESUME_FROM=<run_id>` (looks in `runs/<run_id>/ckpt_last/`), or
+  - `RESUME_FROM=<checkpoint_prefix_or_dir>`.
+- Continue for additional updates relative to restored step:
+  - `EXTRA_UPDATES=<n>`.
+
+Example:
+
+```bash
+docker compose run --rm \
+  -e RUN_NAME=my_run \
+  -e RESUME_FROM=my_old_run \
+  -e EXTRA_UPDATES=5000 \
+  gpt
+```
+
 Model/hparam knobs (examples):
 
 - `BASE_LR`, `MIN_LR`, `WARMUP_STEPS`, `WEIGHT_DECAY`, `DROPOUT`

@@ -47,6 +47,17 @@ def main():
 
     model = ExplicitGPT(cfg)
     state = build_train_state(cfg, model, tracker.run_dir)
+
+    start_update = int(state.update_step.numpy())
+    if cfg.extra_updates > 0:
+        cfg.num_updates = start_update + cfg.extra_updates
+        print(f"resume mode: start_update={start_update} | extra_updates={cfg.extra_updates} | target_updates={cfg.num_updates}")
+    elif start_update >= cfg.num_updates:
+        print(
+            f"checkpoint is already at update {start_update}, target is {cfg.num_updates}. "
+            f"Set NUM_UPDATES higher or set EXTRA_UPDATES to continue."
+        )
+
     train_micro_step = build_train_micro_step(cfg, model, state)
 
     param_count = sum(int(np.prod(v.shape)) for v in model.trainable_variables)
@@ -66,12 +77,15 @@ def main():
     tracker.log_event(
         {
             "event": "run_start",
+            "start_update": start_update,
             "num_updates": cfg.num_updates,
             "batch_size": cfg.batch_size,
             "seq_len": cfg.seq_len,
             "attn_window": cfg.attn_window,
             "eval_every": cfg.eval_every,
             "eval_tokens": cfg.eval_tokens,
+            "resume_from": cfg.resume_from,
+            "extra_updates": cfg.extra_updates,
         }
     )
 

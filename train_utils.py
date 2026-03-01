@@ -1,6 +1,5 @@
 import math
 import os
-import time
 from dataclasses import dataclass
 
 import numpy as np
@@ -83,9 +82,27 @@ def build_train_state(cfg: GPTConfig, model, run_dir: str) -> TrainState:
     manager = tf.train.CheckpointManager(ckpt, last_ckpt_dir, max_to_keep=cfg.keep_last_ckpts)
     best_manager = tf.train.CheckpointManager(ckpt, best_ckpt_dir, max_to_keep=cfg.keep_best_ckpts)
 
-    if manager.latest_checkpoint:
-        ckpt.restore(manager.latest_checkpoint)
-        print(f"restored checkpoint: {manager.latest_checkpoint} (update_step={int(update_step.numpy())})")
+    def resolve_resume_checkpoint():
+        if not cfg.resume_from.strip():
+            return None
+        resume_from = cfg.resume_from.strip()
+
+        if os.path.exists(resume_from + ".index"):
+            return resume_from
+
+        if os.path.isdir(resume_from):
+            return tf.train.latest_checkpoint(resume_from)
+
+        run_ckpt_dir = os.path.join(cfg.runs_dir, resume_from, "ckpt_last")
+        if os.path.isdir(run_ckpt_dir):
+            return tf.train.latest_checkpoint(run_ckpt_dir)
+
+        return None
+
+    resume_ckpt = manager.latest_checkpoint or resolve_resume_checkpoint()
+    if resume_ckpt:
+        ckpt.restore(resume_ckpt)
+        print(f"restored checkpoint: {resume_ckpt} (update_step={int(update_step.numpy())})")
     else:
         print("no checkpoint found, starting fresh")
 

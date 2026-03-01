@@ -82,6 +82,10 @@ class GPTConfig:
     keep_last_ckpts: int = int(os.environ.get("KEEP_LAST_CKPTS", "3"))
     keep_best_ckpts: int = int(os.environ.get("KEEP_BEST_CKPTS", "1"))
 
+    # resume control
+    resume_from: str = os.environ.get("RESUME_FROM", "")
+    extra_updates: int = int(os.environ.get("EXTRA_UPDATES", "0"))
+
 
 def validate_config(cfg: GPTConfig):
     assert cfg.n_embd % cfg.n_head == 0

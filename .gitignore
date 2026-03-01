@@ -1,9 +1,0 @@
-# Never commit user-specific secrets
-configs/
-
-# Project workspaces are persistent + may contain large/private files
-projects/**/workspace/
-
-# Common junk
-**/__pycache__/
-**/.DS_Store

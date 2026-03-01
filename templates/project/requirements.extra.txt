@@ -1,1 +1,0 @@
-# Optional pip requirements (only installed if pip3 exists in the base image)

@@ -39,6 +39,33 @@ def _load_enwik8_bytes(data_dir):
     return train_raw, val_raw, test_raw
 
 
+def _load_tinyshakespeare_text(data_dir):
+    os.makedirs(data_dir, exist_ok=True)
+    txt_path = os.environ.get("TINY_SHAKESPEARE_PATH", os.path.join(data_dir, "tinyshakespeare.txt"))
+    if not os.path.exists(txt_path):
+        url = "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt"
+        print(f"downloading tinyshakespeare to {txt_path} ...")
+        try:
+            urllib.request.urlretrieve(url, txt_path)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to download tinyshakespeare from {url}. "
+                f"Place a local file at {txt_path} or set TINY_SHAKESPEARE_PATH. "
+                f"Original error: {e}"
+            ) from e
+
+    with open(txt_path, "r", encoding="utf-8") as f:
+        text = f.read()
+
+    n = len(text)
+    n_train = int(0.9 * n)
+    n_val = int(0.05 * n)
+    train_text = text[:n_train]
+    val_text = text[n_train:n_train + n_val]
+    test_text = text[n_train + n_val:]
+    return train_text, val_text, test_text
+
+
 def _build_stream_and_doc_starts(docs_list, tokenizer):
     bos_token = tokenizer.bos_id
     tokens = [bos_token]
@@ -58,7 +85,7 @@ def load_dataset(dataset_name: str, data_dir: str, tokenizer_mode: str = "auto")
     if dataset_name == "enwik8":
         train_raw, val_raw, test_raw = _load_enwik8_bytes(data_dir)
         docs_for_char = [train_raw.decode("latin-1"), val_raw.decode("latin-1"), test_raw.decode("latin-1")]
-        tokenizer = make_tokenizer(tokenizer_mode, dataset_name, docs_all=docs_for_char)
+        tokenizer = make_tokenizer(resolved_mode, dataset_name, docs_all=docs_for_char)
 
         train_tokens = np.frombuffer(train_raw, dtype=np.uint8).astype(np.int32)
         val_tokens = np.frombuffer(val_raw, dtype=np.uint8).astype(np.int32)
@@ -71,6 +98,21 @@ def load_dataset(dataset_name: str, data_dir: str, tokenizer_mode: str = "auto")
 
         print("dataset: enwik8")
         print(f"split bytes/tokens | train={len(train_tokens):,} val={len(val_tokens):,} test={len(test_tokens):,}")
+        print(f"tokenizer: {resolved_mode}")
+        print(f"vocab size: {tokenizer.vocab_size}")
+        return DatasetBundle(dataset_name, train_tokens, val_tokens, test_tokens, tokenizer, tokenizer.vocab_size)
+
+    if dataset_name == "tinyshakespeare":
+        train_text, val_text, test_text = _load_tinyshakespeare_text(data_dir)
+        docs_all = [train_text, val_text, test_text]
+        tokenizer = make_tokenizer(resolved_mode, dataset_name, docs_all=docs_all)
+
+        train_tokens = np.array(tokenizer.encode_text(train_text), dtype=np.int32)
+        val_tokens = np.array(tokenizer.encode_text(val_text), dtype=np.int32)
+        test_tokens = np.array(tokenizer.encode_text(test_text), dtype=np.int32)
+
+        print("dataset: tinyshakespeare")
+        print(f"split chars/tokens | train={len(train_tokens):,} val={len(val_tokens):,} test={len(test_tokens):,}")
         print(f"tokenizer: {resolved_mode}")
         print(f"vocab size: {tokenizer.vocab_size}")
         return DatasetBundle(dataset_name, train_tokens, val_tokens, test_tokens, tokenizer, tokenizer.vocab_size)
@@ -89,7 +131,7 @@ def load_dataset(dataset_name: str, data_dir: str, tokenizer_mode: str = "auto")
         docs_val = docs_all[n_train:n_train + n_val]
         docs_test = docs_all[n_train + n_val:]
 
-        tokenizer = make_tokenizer(tokenizer_mode, dataset_name, docs_all=docs_all)
+        tokenizer = make_tokenizer(resolved_mode, dataset_name, docs_all=docs_all)
         train_tokens, _ = _build_stream_and_doc_starts(docs_train, tokenizer)
         val_tokens, _ = _build_stream_and_doc_starts(docs_val, tokenizer)
         test_tokens, _ = _build_stream_and_doc_starts(docs_test, tokenizer)
@@ -100,7 +142,7 @@ def load_dataset(dataset_name: str, data_dir: str, tokenizer_mode: str = "auto")
         print(f"vocab size: {tokenizer.vocab_size}")
         return DatasetBundle(dataset_name, train_tokens, val_tokens, test_tokens, tokenizer, tokenizer.vocab_size)
 
-    raise ValueError(f"Unsupported DATASET='{dataset_name}'. Use 'enwik8' or 'names'.")
+    raise ValueError("Unsupported DATASET. Use one of: enwik8, tinyshakespeare, names")
 
 
 def make_random_window_dataset(tokens_np: np.ndarray, cfg: GPTConfig):

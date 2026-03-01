@@ -37,6 +37,8 @@ def main():
     validate_config(cfg)
     if ds_bundle.name == "names" and cfg.preview_prompt == "The ":
         cfg.preview_prompt = "mar"
+    if ds_bundle.name == "tinyshakespeare" and cfg.preview_prompt == "The ":
+        cfg.preview_prompt = "ROMEO: "
 
     tracker = RunTracker(ds_bundle.name, cfg.run_name, cfg.runs_dir)
     tb_writer, tb_dir = create_summary_writer(cfg, tracker.run_dir)
@@ -153,6 +155,7 @@ def main():
                     float(gnorm.numpy()),
                     float(lr.numpy()),
                     float(tps),
+                    num_updates=cfg.num_updates,
                 )
                 if cfg.tb_hist_every > 0 and (upd % cfg.tb_hist_every == 0):
                     log_weight_histograms(tb_writer, model, upd)
@@ -198,7 +201,14 @@ def main():
                 }
             )
             if tb_writer is not None:
-                log_eval_scalars(tb_writer, upd, float(val_nll), float(val_bpc), float(val_ppl))
+                log_eval_scalars(
+                    tb_writer,
+                    upd,
+                    float(val_nll),
+                    float(val_bpc),
+                    float(val_ppl),
+                    best_val_bpc=float(best_val_bpc),
+                )
             print(
                 f"eval  update {upd:5d}/{cfg.num_updates} | val_nll {val_nll:.4f} | "
                 f"val_bpc {val_bpc:.4f} | val_ppl {val_ppl:.3f}{mark}"

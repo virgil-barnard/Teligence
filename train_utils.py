@@ -235,20 +235,24 @@ def create_summary_writer(cfg: GPTConfig, run_dir: str):
     return writer, tb_dir
 
 
-def log_train_scalars(writer, step, loss, gnorm, lr, tps):
+def log_train_scalars(writer, step, loss, gnorm, lr, tps, num_updates=None):
     with writer.as_default():
         tf.summary.scalar("train/loss", loss, step=step)
         tf.summary.scalar("train/grad_norm", gnorm, step=step)
         tf.summary.scalar("train/lr", lr, step=step)
         tf.summary.scalar("train/tok_per_s", tps, step=step)
+        if num_updates is not None and num_updates > 0:
+            tf.summary.scalar("train/progress", float(step) / float(num_updates), step=step)
         writer.flush()
 
 
-def log_eval_scalars(writer, step, val_nll, val_bpc, val_ppl):
+def log_eval_scalars(writer, step, val_nll, val_bpc, val_ppl, best_val_bpc=None):
     with writer.as_default():
         tf.summary.scalar("eval/val_nll", val_nll, step=step)
         tf.summary.scalar("eval/val_bpc", val_bpc, step=step)
         tf.summary.scalar("eval/val_ppl", val_ppl, step=step)
+        if best_val_bpc is not None:
+            tf.summary.scalar("eval/best_val_bpc", best_val_bpc, step=step)
         writer.flush()
 
 

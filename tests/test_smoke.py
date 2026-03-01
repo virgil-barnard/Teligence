@@ -97,6 +97,5 @@ class SmokeTests(unittest.TestCase):
         b_ids = byte_tok.encode_text("hello")
         self.assertEqual(byte_tok.decode_ids(b_ids), "hello")
 
-
 if __name__ == "__main__":
     unittest.main()

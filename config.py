@@ -75,6 +75,16 @@ class GPTConfig:
     preview_prompt: str = os.environ.get("PREVIEW_PROMPT", "The ")
     preview_max_new_tokens: int = int(os.environ.get("PREVIEW_MAX_NEW_TOKENS", "64"))
     save_every: int = int(os.environ.get("SAVE_EVERY", "500"))
+    tokenizer: str = os.environ.get("TOKENIZER", "auto")
+
+    # live visualization (TensorBoard)
+    visualize: bool = os.environ.get("VISUALIZE", "0") == "1"
+    tb_logdir: str = os.environ.get("TB_LOGDIR", "")
+    tb_hist_every: int = int(os.environ.get("TB_HIST_EVERY", "200"))
+    attn_viz_every: int = int(os.environ.get("ATTN_VIZ_EVERY", "50"))
+    attn_viz_max_new_tokens: int = int(os.environ.get("ATTN_VIZ_MAX_NEW_TOKENS", "24"))
+    attn_viz_max_heads: int = int(os.environ.get("ATTN_VIZ_MAX_HEADS", "4"))
+    attn_viz_max_layers: int = int(os.environ.get("ATTN_VIZ_MAX_LAYERS", "3"))
 
     # experiment tracking
     run_name: str = os.environ.get("RUN_NAME", "")

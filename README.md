@@ -8,6 +8,14 @@ This repo trains a small TensorFlow GPT model with GPU support in Docker.
 docker compose up --build
 ```
 
+This starts both training and TensorBoard (`http://localhost:6006`).
+
+If you already built the image and are offline, run without rebuilding:
+
+```bash
+docker compose up
+```
+
 By default this trains on `enwik8` and prints:
 
 - training loss and throughput
@@ -52,6 +60,24 @@ Model/hparam knobs (examples):
 - `BASE_LR`, `MIN_LR`, `WARMUP_STEPS`, `WEIGHT_DECAY`, `DROPOUT`
 - `N_LAYER`, `N_EMBD`, `N_HEAD`, `N_KV_HEAD`, `MLP_MULT`
 - `SEQ_LEN`, `ATTN_WINDOW`, `BATCH_SIZE`
+- `TOKENIZER` (`auto`, `byte`, `char`)
+- `VISUALIZE=1` to enable TensorBoard summaries
+- `TB_HIST_EVERY`, `ATTN_VIZ_EVERY`, `ATTN_VIZ_MAX_NEW_TOKENS`, `ATTN_VIZ_MAX_HEADS`, `ATTN_VIZ_MAX_LAYERS`
+
+Visualization example:
+
+```bash
+docker compose run --rm \
+  -e VISUALIZE=1 \
+  -e LOG_EVERY=50 \
+  -e ATTN_VIZ_EVERY=50 \
+  gpt
+```
+
+Notes:
+
+- TensorBoard writes one subdirectory per run (`runs/<run_id>/tb`).
+- If you only see one point, check you selected the latest run and that your logging cadence (`LOG_EVERY`) is not too sparse.
 
 ### Artifacts
 
@@ -90,7 +116,19 @@ docker compose run --rm gpt python -m unittest tests.test_smoke
 - `gpt.py`: main training entrypoint
 - `config.py`: config/env parsing and validation
 - `data_utils.py`: dataset loading and dataloaders
+- `tokenizer.py`: tokenizer strategies and tokenizer factory
 - `modeling.py`: model/attention implementation
 - `train_utils.py`: optimizer, train step, eval, sampling helpers
 - `run_utils.py`: run artifact and metrics logging
 - `runtime.py`: GPU memory-growth and reproducibility setup
+
+### Live visualization
+
+When `VISUALIZE=1`, TensorBoard logs include:
+
+- train scalars (`loss`, `lr`, `grad_norm`, `tok_per_s`)
+- eval scalars (`val_nll`, `val_bpc`, `val_ppl`)
+- weight histograms (`TB_HIST_EVERY`)
+- attention probe maps on prompt text (default control prompt: `The`) at `ATTN_VIZ_EVERY`
+
+Attention maps are logged for informative layers (first/middle/last) and the most variant heads to reduce clutter/overhead.

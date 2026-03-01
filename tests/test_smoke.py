@@ -6,6 +6,7 @@ import tensorflow as tf
 from config import GPTConfig, validate_config
 from data_utils import iter_eval_batches, make_random_window_dataset
 from modeling import ExplicitGPT, set_precision
+from tokenizer import ByteTokenizer, CharTokenizer
 from train_utils import build_train_micro_step, build_train_state, evaluate_model
 
 
@@ -85,6 +86,16 @@ class SmokeTests(unittest.TestCase):
         self.assertTrue(np.isfinite(nll))
         self.assertTrue(np.isfinite(bpc))
         self.assertTrue(np.isfinite(ppl))
+
+    def test_tokenizer_roundtrip(self):
+        char_tok = CharTokenizer.from_texts(["alice", "bob"])
+        ids = char_tok.encode_text("alice")
+        self.assertGreater(len(ids), 0)
+        self.assertEqual(char_tok.decode_ids(ids), "alice")
+
+        byte_tok = ByteTokenizer()
+        b_ids = byte_tok.encode_text("hello")
+        self.assertEqual(byte_tok.decode_ids(b_ids), "hello")
 
 
 if __name__ == "__main__":

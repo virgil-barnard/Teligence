@@ -11,11 +11,17 @@ from runtime import setup_runtime
 from train_utils import (
     build_train_micro_step,
     build_train_state,
+    create_summary_writer,
     escape_preview_text,
     evaluate_model,
     generate_from_prompt,
     generate_names,
+    log_attention_probe,
+    log_eval_scalars,
+    log_train_scalars,
+    log_weight_histograms,
     print_runtime_banner,
+    run_attention_probe,
 )
 
 
@@ -24,7 +30,8 @@ def main():
 
     dataset_name = os.environ.get("DATASET", "enwik8").strip().lower()
     data_dir = os.environ.get("DATA_DIR", "./data")
-    ds_bundle = load_dataset(dataset_name, data_dir)
+    tokenizer_mode = os.environ.get("TOKENIZER", "auto")
+    ds_bundle = load_dataset(dataset_name, data_dir, tokenizer_mode=tokenizer_mode)
 
     cfg = GPTConfig(vocab_size=ds_bundle.vocab_size)
     validate_config(cfg)
@@ -32,6 +39,7 @@ def main():
         cfg.preview_prompt = "mar"
 
     tracker = RunTracker(ds_bundle.name, cfg.run_name, cfg.runs_dir)
+    tb_writer, tb_dir = create_summary_writer(cfg, tracker.run_dir)
 
     set_precision(cfg.use_bf16)
     compute_dtype, cache_dtype = get_precision_dtypes()
@@ -86,6 +94,8 @@ def main():
             "eval_tokens": cfg.eval_tokens,
             "resume_from": cfg.resume_from,
             "extra_updates": cfg.extra_updates,
+            "tokenizer": ds_bundle.tokenizer.__class__.__name__,
+            "tb_logdir": tb_dir,
         }
     )
 
@@ -124,9 +134,7 @@ def main():
             preview = generate_from_prompt(
                 model,
                 cfg.preview_prompt,
-                ds_bundle.stoi,
-                ds_bundle.itos,
-                ds_bundle.bos,
+                ds_bundle.tokenizer,
                 max_new_tokens=cfg.preview_max_new_tokens,
                 temperature=0.7,
                 top_p=0.9,
@@ -137,6 +145,33 @@ def main():
                 train_rec["preview"] = shown
 
             tracker.log_event(train_rec)
+            if tb_writer is not None:
+                log_train_scalars(
+                    tb_writer,
+                    upd,
+                    float(loss.numpy()),
+                    float(gnorm.numpy()),
+                    float(lr.numpy()),
+                    float(tps),
+                )
+                if cfg.tb_hist_every > 0 and (upd % cfg.tb_hist_every == 0):
+                    log_weight_histograms(tb_writer, model, upd)
+                if cfg.attn_viz_every > 0 and (upd % cfg.attn_viz_every == 0):
+                    probe = run_attention_probe(
+                        model,
+                        ds_bundle.tokenizer,
+                        cfg.preview_prompt,
+                        max_new_tokens=cfg.attn_viz_max_new_tokens,
+                    )
+                    log_attention_probe(
+                        tb_writer,
+                        upd,
+                        probe,
+                        max_layers=cfg.attn_viz_max_layers,
+                        max_heads=cfg.attn_viz_max_heads,
+                    )
+                    if probe.get("generated"):
+                        print(f"attn probe '{cfg.preview_prompt}' -> {escape_preview_text(probe['generated'])}")
             last_log_time = now
             last_log_updates = upd
 
@@ -162,6 +197,8 @@ def main():
                     "is_best": is_best,
                 }
             )
+            if tb_writer is not None:
+                log_eval_scalars(tb_writer, upd, float(val_nll), float(val_bpc), float(val_ppl))
             print(
                 f"eval  update {upd:5d}/{cfg.num_updates} | val_nll {val_nll:.4f} | "
                 f"val_bpc {val_bpc:.4f} | val_ppl {val_ppl:.3f}{mark}"
@@ -194,7 +231,7 @@ def main():
     print(f"wrote run summary: {tracker.summary_json}")
 
     if ds_bundle.name == "names":
-        generate_names(model, ds_bundle.bos, ds_bundle.itos, num=20, max_new_tokens=256, temperature=0.7, top_p=0.9)
+        generate_names(model, ds_bundle.tokenizer, num=20, max_new_tokens=256, temperature=0.7, top_p=0.9)
 
 
 if __name__ == "__main__":

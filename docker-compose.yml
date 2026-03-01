@@ -1,11 +1,27 @@
 services:
   gpt:
+    image: teligence-gpt:latest
     build:
       context: .
       dockerfile: Dockerfile
     gpus: all
     stdin_open: true
     tty: true
+    environment:
+      VISUALIZE: "1"
+      LOG_EVERY: "50"
+      EVAL_EVERY: "50"
+      ATTN_VIZ_EVERY: "50"
     volumes:
       - ./:/app
     command: ["python", "gpt.py"]
+
+  tensorboard:
+    image: teligence-gpt:latest
+    depends_on:
+      - gpt
+    ports:
+      - "6006:6006"
+    volumes:
+      - ./:/app
+    command: ["tensorboard", "--logdir", "/app/runs", "--host", "0.0.0.0", "--port", "6006"]

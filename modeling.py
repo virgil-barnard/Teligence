@@ -503,7 +503,7 @@ class CausalSelfAttention(tf.keras.layers.Layer):
             out = tf.nn.dropout(out, rate=cfg.dropout)
         return out
 
-    def step_ring(self, x_t, cache_entry, t):
+    def step_ring(self, x_t, cache_entry, t, return_attn=False):
         cfg = self.cfg
         b = tf.shape(x_t)[0]
         c = cfg.n_embd
@@ -598,8 +598,15 @@ class CausalSelfAttention(tf.keras.layers.Layer):
         out = tf.reshape(out, [b, c])
         out = tf.einsum("bc,cd->bd", out, cast_like(self.wo, out))
 
+        attn_heads = tf.reshape(wprob, [b, h, w])
+
         if cfg.pos_encoding == "alibi":
+            if return_attn:
+                return out, (kflat_out, vflat_out, pflat_out), attn_heads
             return out, (kflat_out, vflat_out, pflat_out)
+
+        if return_attn:
+            return out, (kflat_out, vflat_out), attn_heads
         return out, (kflat_out, vflat_out)
 
 
@@ -616,12 +623,17 @@ class Block(tf.keras.layers.Layer):
         x = x + self.mlp(self.ln2(x), training=training)
         return x
 
-    def step_ring(self, x_t, cache_entry, t):
-        a, cache_entry = self.attn.step_ring(self.ln1(x_t), cache_entry, t)
+    def step_ring(self, x_t, cache_entry, t, return_attn=False):
+        if return_attn:
+            a, cache_entry, attn_heads = self.attn.step_ring(self.ln1(x_t), cache_entry, t, return_attn=True)
+        else:
+            a, cache_entry = self.attn.step_ring(self.ln1(x_t), cache_entry, t, return_attn=False)
         a = tf.cast(a, x_t.dtype)
         x_t = x_t + a
         m = self.mlp.step(self.ln2(x_t))
         x_t = x_t + tf.cast(m, x_t.dtype)
+        if return_attn:
+            return x_t, cache_entry, attn_heads
         return x_t, cache_entry
 
 
@@ -691,15 +703,22 @@ class ExplicitGPT(tf.keras.Model):
                 if isinstance(v, tf.Variable):
                     v.assign(tf.zeros_like(v))
 
-    def step_ring(self, token_id, t, cache):
+    def step_ring(self, token_id, t, cache, return_attn=False):
         x_t = self.wte(token_id)
         x_t = tf.cast(x_t, COMPUTE_DTYPE)
         x_t = self.emb_norm(x_t)
         new_cache = []
+        attn_by_layer = []
         for li, blk in enumerate(self.blocks):
-            x_t, entry = blk.step_ring(x_t, cache[li], t)
+            if return_attn:
+                x_t, entry, attn_heads = blk.step_ring(x_t, cache[li], t, return_attn=True)
+                attn_by_layer.append(attn_heads)
+            else:
+                x_t, entry = blk.step_ring(x_t, cache[li], t, return_attn=False)
             new_cache.append(entry)
         x_t = self.final_norm(x_t)
         w = self._lm_weight()
         logits = tf.einsum("bc,vc->bv", x_t, tf.cast(w, x_t.dtype))
+        if return_attn:
+            return logits, new_cache, attn_by_layer
         return logits, new_cache

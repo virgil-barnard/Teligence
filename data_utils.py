@@ -8,6 +8,7 @@ import numpy as np
 import tensorflow as tf
 
 from config import GPTConfig
+from tokenizer import make_tokenizer
 
 
 @dataclass
@@ -16,9 +17,7 @@ class DatasetBundle:
     train_tokens: np.ndarray
     val_tokens: np.ndarray
     test_tokens: np.ndarray
-    stoi: dict
-    itos: dict
-    bos: int
+    tokenizer: object
     vocab_size: int
 
 
@@ -40,34 +39,41 @@ def _load_enwik8_bytes(data_dir):
     return train_raw, val_raw, test_raw
 
 
-def _build_stream_and_doc_starts(docs_list, bos_token, token_lookup):
+def _build_stream_and_doc_starts(docs_list, tokenizer):
+    bos_token = tokenizer.bos_id
     tokens = [bos_token]
     doc_starts = [0]
     for d in docs_list:
-        for ch in d:
-            tokens.append(token_lookup[ch])
+        tokens.extend(tokenizer.encode_text(d))
         tokens.append(bos_token)
         doc_starts.append(len(tokens) - 1)
     return np.array(tokens, dtype=np.int32), np.array(doc_starts, dtype=np.int32)
 
 
-def load_dataset(dataset_name: str, data_dir: str) -> DatasetBundle:
+def load_dataset(dataset_name: str, data_dir: str, tokenizer_mode: str = "auto") -> DatasetBundle:
     dataset_name = dataset_name.strip().lower()
+    mode = tokenizer_mode.strip().lower()
+    resolved_mode = ("byte" if dataset_name == "enwik8" else "char") if mode == "auto" else mode
 
     if dataset_name == "enwik8":
         train_raw, val_raw, test_raw = _load_enwik8_bytes(data_dir)
-        uchars = [chr(i) for i in range(256)]
-        stoi = {ch: i for i, ch in enumerate(uchars)}
-        itos = {i: ch for ch, i in stoi.items()}
-        bos = 256
-        vocab_size = 257
+        docs_for_char = [train_raw.decode("latin-1"), val_raw.decode("latin-1"), test_raw.decode("latin-1")]
+        tokenizer = make_tokenizer(tokenizer_mode, dataset_name, docs_all=docs_for_char)
+
         train_tokens = np.frombuffer(train_raw, dtype=np.uint8).astype(np.int32)
         val_tokens = np.frombuffer(val_raw, dtype=np.uint8).astype(np.int32)
         test_tokens = np.frombuffer(test_raw, dtype=np.uint8).astype(np.int32)
+
+        if resolved_mode == "char":
+            train_tokens = np.array(tokenizer.encode_text(docs_for_char[0]), dtype=np.int32)
+            val_tokens = np.array(tokenizer.encode_text(docs_for_char[1]), dtype=np.int32)
+            test_tokens = np.array(tokenizer.encode_text(docs_for_char[2]), dtype=np.int32)
+
         print("dataset: enwik8")
         print(f"split bytes/tokens | train={len(train_tokens):,} val={len(val_tokens):,} test={len(test_tokens):,}")
-        print(f"vocab size: {vocab_size} (256 bytes + BOS)")
-        return DatasetBundle(dataset_name, train_tokens, val_tokens, test_tokens, stoi, itos, bos, vocab_size)
+        print(f"tokenizer: {resolved_mode}")
+        print(f"vocab size: {tokenizer.vocab_size}")
+        return DatasetBundle(dataset_name, train_tokens, val_tokens, test_tokens, tokenizer, tokenizer.vocab_size)
 
     if dataset_name == "names":
         if not os.path.exists("input.txt"):
@@ -83,20 +89,16 @@ def load_dataset(dataset_name: str, data_dir: str) -> DatasetBundle:
         docs_val = docs_all[n_train:n_train + n_val]
         docs_test = docs_all[n_train + n_val:]
 
-        uchars = sorted(set("".join(docs_all)))
-        stoi = {ch: i for i, ch in enumerate(uchars)}
-        itos = {i: ch for ch, i in stoi.items()}
-        bos = len(uchars)
-        vocab_size = len(uchars) + 1
-
-        train_tokens, _ = _build_stream_and_doc_starts(docs_train, bos, stoi)
-        val_tokens, _ = _build_stream_and_doc_starts(docs_val, bos, stoi)
-        test_tokens, _ = _build_stream_and_doc_starts(docs_test, bos, stoi)
+        tokenizer = make_tokenizer(tokenizer_mode, dataset_name, docs_all=docs_all)
+        train_tokens, _ = _build_stream_and_doc_starts(docs_train, tokenizer)
+        val_tokens, _ = _build_stream_and_doc_starts(docs_val, tokenizer)
+        test_tokens, _ = _build_stream_and_doc_starts(docs_test, tokenizer)
 
         print("dataset: names")
         print(f"split docs | train={len(docs_train):,} val={len(docs_val):,} test={len(docs_test):,}")
-        print(f"vocab size: {vocab_size} (including BOS/EOS/boundary)")
-        return DatasetBundle(dataset_name, train_tokens, val_tokens, test_tokens, stoi, itos, bos, vocab_size)
+        print(f"tokenizer: {resolved_mode}")
+        print(f"vocab size: {tokenizer.vocab_size}")
+        return DatasetBundle(dataset_name, train_tokens, val_tokens, test_tokens, tokenizer, tokenizer.vocab_size)
 
     raise ValueError(f"Unsupported DATASET='{dataset_name}'. Use 'enwik8' or 'names'.")
 

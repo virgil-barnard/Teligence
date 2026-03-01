@@ -24,9 +24,11 @@ Also:
 """
 
 import os
+import json
 import math
 import time
 import random
+import zipfile
 import urllib.request
 from dataclasses import dataclass
 
@@ -53,27 +55,91 @@ tf.random.set_seed(42)
 
 
 # ----------------------------
-# Dataset: list[str] docs
+# Dataset loading
 # ----------------------------
-if not os.path.exists("input.txt"):
-    names_url = "https://raw.githubusercontent.com/karpathy/makemore/988aa59/names.txt"
-    urllib.request.urlretrieve(names_url, "input.txt")
-
-docs = [line.strip() for line in open("input.txt") if line.strip()]
-random.shuffle(docs)
-print(f"num docs: {len(docs)}")
+DATASET_NAME = os.environ.get("DATASET", "enwik8").strip().lower()
+DATA_DIR = os.environ.get("DATA_DIR", "./data")
 
 
-# ----------------------------
-# Tokenizer: char-level + single BOS token (also used as EOS/boundary)
-# ----------------------------
-uchars = sorted(set("".join(docs)))
-stoi = {ch: i for i, ch in enumerate(uchars)}
-itos = {i: ch for ch, i in stoi.items()}
+def load_enwik8_bytes(data_dir):
+    os.makedirs(data_dir, exist_ok=True)
+    zip_path = os.path.join(data_dir, "enwik8.zip")
+    if not os.path.exists(zip_path):
+        enwik8_url = "http://mattmahoney.net/dc/enwik8.zip"
+        print(f"downloading enwik8 to {zip_path} ...")
+        urllib.request.urlretrieve(enwik8_url, zip_path)
 
-BOS = len(uchars)
-vocab_size = len(uchars) + 1
-print(f"vocab size: {vocab_size} (including BOS/EOS/boundary)")
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        raw = zf.read("enwik8")
+
+    assert len(raw) >= 100_000_000, "enwik8 must be at least 100M bytes"
+    train_raw = raw[:90_000_000]
+    val_raw = raw[90_000_000:95_000_000]
+    test_raw = raw[95_000_000:100_000_000]
+    return train_raw, val_raw, test_raw
+
+
+def build_stream_and_doc_starts(docs_list, bos_token, token_lookup):
+    tokens = [bos_token]
+    doc_starts = [0]
+    for d in docs_list:
+        for ch in d:
+            tokens.append(token_lookup[ch])
+        tokens.append(bos_token)
+        doc_starts.append(len(tokens) - 1)
+    return np.array(tokens, dtype=np.int32), np.array(doc_starts, dtype=np.int32)
+
+
+if DATASET_NAME == "enwik8":
+    train_raw, val_raw, test_raw = load_enwik8_bytes(DATA_DIR)
+
+    uchars = [chr(i) for i in range(256)]
+    stoi = {ch: i for i, ch in enumerate(uchars)}
+    itos = {i: ch for ch, i in stoi.items()}
+
+    BOS = 256
+    vocab_size = 257
+
+    train_tokens = np.frombuffer(train_raw, dtype=np.uint8).astype(np.int32)
+    val_tokens = np.frombuffer(val_raw, dtype=np.uint8).astype(np.int32)
+    test_tokens = np.frombuffer(test_raw, dtype=np.uint8).astype(np.int32)
+
+    print("dataset: enwik8")
+    print(f"split bytes/tokens | train={len(train_tokens):,} val={len(val_tokens):,} test={len(test_tokens):,}")
+    print(f"vocab size: {vocab_size} (256 bytes + BOS)")
+
+elif DATASET_NAME == "names":
+    if not os.path.exists("input.txt"):
+        names_url = "https://raw.githubusercontent.com/karpathy/makemore/988aa59/names.txt"
+        urllib.request.urlretrieve(names_url, "input.txt")
+
+    docs_all = [line.strip() for line in open("input.txt") if line.strip()]
+    random.shuffle(docs_all)
+    n = len(docs_all)
+    n_train = int(0.9 * n)
+    n_val = int(0.05 * n)
+
+    docs_train = docs_all[:n_train]
+    docs_val = docs_all[n_train:n_train + n_val]
+    docs_test = docs_all[n_train + n_val:]
+
+    uchars = sorted(set("".join(docs_all)))
+    stoi = {ch: i for i, ch in enumerate(uchars)}
+    itos = {i: ch for ch, i in stoi.items()}
+
+    BOS = len(uchars)
+    vocab_size = len(uchars) + 1
+
+    train_tokens, _ = build_stream_and_doc_starts(docs_train, BOS, stoi)
+    val_tokens, _ = build_stream_and_doc_starts(docs_val, BOS, stoi)
+    test_tokens, _ = build_stream_and_doc_starts(docs_test, BOS, stoi)
+
+    print("dataset: names")
+    print(f"split docs | train={len(docs_train):,} val={len(docs_val):,} test={len(docs_test):,}")
+    print(f"vocab size: {vocab_size} (including BOS/EOS/boundary)")
+
+else:
+    raise ValueError(f"Unsupported DATASET='{DATASET_NAME}'. Use 'enwik8' or 'names'.")
 
 
 # ----------------------------
@@ -107,15 +173,15 @@ class GPTConfig:
     vocab_size: int
 
     # shape
-    n_layer: int = 6
-    n_embd: int = 384
-    n_head: int = 6
-    n_kv_head: int = 2          # GQA: must divide n_head
-    mlp_mult: int = 4
+    n_layer: int = int(os.environ.get("N_LAYER", "6"))
+    n_embd: int = int(os.environ.get("N_EMBD", "384"))
+    n_head: int = int(os.environ.get("N_HEAD", "6"))
+    n_kv_head: int = int(os.environ.get("N_KV_HEAD", "2"))  # GQA: must divide n_head
+    mlp_mult: int = int(os.environ.get("MLP_MULT", "4"))
 
     # training length (T) and local window (W)
-    seq_len: int = 512
-    attn_window: int = 256      # also used as inference ring-cache length
+    seq_len: int = int(os.environ.get("SEQ_LEN", "512"))
+    attn_window: int = int(os.environ.get("ATTN_WINDOW", "256"))  # also used as inference ring-cache length
 
     # positional encoding
     pos_encoding: str = "rope"  # "rope" or "alibi"
@@ -133,7 +199,7 @@ class GPTConfig:
     fuse_qkv: bool = True
 
     # regularization
-    dropout: float = 0.1
+    dropout: float = float(os.environ.get("DROPOUT", "0.1"))
 
     # output
     tie_embeddings: bool = True
@@ -157,26 +223,57 @@ class GPTConfig:
     jit_compile: bool = False  # enable only after it runs cleanly on your machine
 
     # optimization
-    base_lr: float = 3e-4
-    min_lr: float = 3e-5
-    warmup_steps: int = 200
-    weight_decay: float = 0.1
+    base_lr: float = float(os.environ.get("BASE_LR", "3e-4"))
+    min_lr: float = float(os.environ.get("MIN_LR", "3e-5"))
+    warmup_steps: int = int(os.environ.get("WARMUP_STEPS", "200"))
+    weight_decay: float = float(os.environ.get("WEIGHT_DECAY", "0.1"))
     grad_clip_norm: float = 1.0
 
     # gradient accumulation
     grad_accum_steps: int = 1
 
     # run
-    batch_size: int = 32
-    num_updates: int = 3000
-    log_every: int = 50
-    save_every: int = 500
+    batch_size: int = int(os.environ.get("BATCH_SIZE", "32"))
+    num_updates: int = int(os.environ.get("NUM_UPDATES", "3000"))
+    log_every: int = int(os.environ.get("LOG_EVERY", "50"))
+    eval_every: int = int(os.environ.get("EVAL_EVERY", "50"))
+    eval_tokens: int = int(os.environ.get("EVAL_TOKENS", "262144"))
+    preview_prompt: str = os.environ.get("PREVIEW_PROMPT", "The ")
+    preview_max_new_tokens: int = int(os.environ.get("PREVIEW_MAX_NEW_TOKENS", "64"))
+    save_every: int = int(os.environ.get("SAVE_EVERY", "500"))
+
+    # experiment tracking
+    run_name: str = os.environ.get("RUN_NAME", "")
+    runs_dir: str = os.environ.get("RUNS_DIR", "./runs")
+    keep_last_ckpts: int = int(os.environ.get("KEEP_LAST_CKPTS", "3"))
+    keep_best_ckpts: int = int(os.environ.get("KEEP_BEST_CKPTS", "1"))
 
     # checkpoint
-    ckpt_dir: str = "./ckpt_explicit_gpt"
+    ckpt_dir: str = f"./ckpt_explicit_gpt_{DATASET_NAME}"
 
 
 cfg = GPTConfig(vocab_size=vocab_size)
+
+run_stamp = time.strftime("%Y%m%d_%H%M%S")
+if cfg.run_name.strip():
+    run_id = cfg.run_name.strip()
+else:
+    run_id = f"{DATASET_NAME}_{run_stamp}"
+
+run_dir = os.path.join(cfg.runs_dir, run_id)
+os.makedirs(run_dir, exist_ok=True)
+
+metrics_jsonl = os.path.join(run_dir, "metrics.jsonl")
+summary_json = os.path.join(run_dir, "summary.json")
+
+
+def log_event(event):
+    rec = dict(event)
+    rec["dataset"] = DATASET_NAME
+    rec["run_id"] = run_id
+    rec["time"] = time.time()
+    with open(metrics_jsonl, "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, sort_keys=True) + "\n")
 
 assert cfg.n_embd % cfg.n_head == 0
 assert cfg.n_head % cfg.n_kv_head == 0
@@ -200,51 +297,73 @@ print(f"use_flash_attn={cfg.use_flash_attn} | qblk={cfg.flash_q_block} | kblk={c
 print(f"flash_parallel_iterations={cfg.flash_parallel_iterations} | swap_memory={cfg.flash_swap_memory}")
 print(f"flash_recompute_grad={cfg.flash_recompute_grad} | jit_compile={cfg.jit_compile}")
 print(f"grad_accum_steps={cfg.grad_accum_steps} | batch_size={cfg.batch_size} | effective_batch={cfg.batch_size * cfg.grad_accum_steps}")
+print(f"run_id={run_id} | run_dir={run_dir}")
 
 
 # ----------------------------
-# True BOS-aligned packing: BOS name BOS name BOS ...
-# Every training block starts at a BOS boundary.
-# Wrap-extend so slicing never runs off the end.
+# Training/eval data streams
 # ----------------------------
-def build_stream_and_doc_starts(docs_list):
-    tokens = [BOS]
-    doc_starts = [0]
-    for d in docs_list:
-        for ch in d:
-            tokens.append(stoi[ch])
-        tokens.append(BOS)
-        doc_starts.append(len(tokens) - 1)
-    return np.array(tokens, dtype=np.int32), np.array(doc_starts, dtype=np.int32)
-
-stream, doc_starts = build_stream_and_doc_starts(docs)
 block_len = cfg.seq_len + 1
-stream_ext = np.concatenate([stream, stream[:block_len]], axis=0)
 
-print(f"stream tokens (orig): {len(stream):,} | (extended): {len(stream_ext):,}")
-print(f"doc_starts: {len(doc_starts):,} | block_len: {block_len}")
+if len(train_tokens) <= block_len:
+    raise ValueError("Training token stream is too short for current seq_len")
 
-stream_tf = tf.constant(stream_ext, dtype=tf.int32)
-doc_starts_tf = tf.constant(doc_starts, dtype=tf.int32)
+print(f"train/val/test tokens: {len(train_tokens):,} / {len(val_tokens):,} / {len(test_tokens):,}")
+print(f"block_len: {block_len}")
 
-def make_aligned_packed_dataset():
-    ds = tf.data.Dataset.from_tensor_slices(doc_starts_tf)
-    ds = ds.shuffle(buffer_size=min(len(doc_starts), 200_000), seed=42, reshuffle_each_iteration=True)
-    ds = ds.repeat()
 
-    def map_start(s):
-        s = tf.cast(s, tf.int32)
-        seg = tf.slice(stream_tf, [s], [block_len])  # (T+1,)
-        x = seg[:-1]                                 # (T,)
-        y = seg[1:]                                  # (T,)
-        return x, y
+def make_random_window_dataset(tokens_np):
+    max_start = len(tokens_np) - block_len
 
-    ds = ds.map(map_start, num_parallel_calls=tf.data.AUTOTUNE)
+    def gen():
+        while True:
+            s = np.random.randint(0, max_start + 1)
+            seg = tokens_np[s:s + block_len]
+            yield seg[:-1], seg[1:]
+
+    sig = (
+        tf.TensorSpec(shape=(cfg.seq_len,), dtype=tf.int32),
+        tf.TensorSpec(shape=(cfg.seq_len,), dtype=tf.int32),
+    )
+    ds = tf.data.Dataset.from_generator(gen, output_signature=sig)
     ds = ds.batch(cfg.batch_size, drop_remainder=True)
     ds = ds.prefetch(tf.data.AUTOTUNE)
     return ds
 
-ds = make_aligned_packed_dataset()
+
+def evaluate_split(tokens_np, max_tokens):
+    max_tokens = max(cfg.seq_len, int(max_tokens))
+    starts = np.arange(0, len(tokens_np) - block_len + 1, cfg.seq_len, dtype=np.int64)
+    if len(starts) == 0:
+        raise ValueError("Eval split too short for current seq_len")
+
+    max_seq = max(1, max_tokens // cfg.seq_len)
+    starts = starts[:max_seq]
+
+    total_nll = 0.0
+    total_tok = 0
+
+    for i in range(0, len(starts), cfg.batch_size):
+        batch_starts = starts[i:i + cfg.batch_size]
+        x = np.stack([tokens_np[s:s + cfg.seq_len] for s in batch_starts], axis=0)
+        y = np.stack([tokens_np[s + 1:s + 1 + cfg.seq_len] for s in batch_starts], axis=0)
+
+        logits = model(tf.constant(x, dtype=tf.int32), training=False)
+        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+            labels=tf.constant(y, dtype=tf.int32),
+            logits=tf.cast(logits, tf.float32),
+        )
+
+        total_nll += float(tf.reduce_sum(loss).numpy())
+        total_tok += int(np.prod(y.shape))
+
+    nll = total_nll / max(1, total_tok)
+    bpc = nll / math.log(2.0)
+    ppl = math.exp(min(20.0, nll))
+    return nll, bpc, ppl
+
+
+ds = make_random_window_dataset(train_tokens)
 it = iter(ds)
 
 
@@ -1022,7 +1141,13 @@ accum_count = tf.Variable(0, dtype=tf.int32, trainable=False)
 update_step = tf.Variable(0, dtype=tf.int64, trainable=False)
 
 ckpt = tf.train.Checkpoint(model=model, update_step=update_step)
-manager = tf.train.CheckpointManager(ckpt, cfg.ckpt_dir, max_to_keep=3)
+last_ckpt_dir = os.path.join(run_dir, "ckpt_last")
+best_ckpt_dir = os.path.join(run_dir, "ckpt_best")
+os.makedirs(last_ckpt_dir, exist_ok=True)
+os.makedirs(best_ckpt_dir, exist_ok=True)
+
+manager = tf.train.CheckpointManager(ckpt, last_ckpt_dir, max_to_keep=cfg.keep_last_ckpts)
+best_manager = tf.train.CheckpointManager(ckpt, best_ckpt_dir, max_to_keep=cfg.keep_best_ckpts)
 
 if manager.latest_checkpoint:
     ckpt.restore(manager.latest_checkpoint)
@@ -1164,6 +1289,10 @@ def generate_from_prompt(prompt, max_new_tokens=64, temperature=0.8, top_k=0, to
     return clean + "".join(out)
 
 
+def escape_preview_text(s):
+    return s.encode("unicode_escape", "backslashreplace").decode("ascii")
+
+
 # ----------------------------
 # Training loop
 # ----------------------------
@@ -1172,6 +1301,21 @@ micro = 0
 t0 = time.time()
 last_log_time = t0
 last_log_updates = int(update_step.numpy())
+best_val_bpc = float("inf")
+best_val_step = 0
+
+log_event({
+    "event": "run_start",
+    "num_updates": cfg.num_updates,
+    "batch_size": cfg.batch_size,
+    "seq_len": cfg.seq_len,
+    "attn_window": cfg.attn_window,
+    "eval_every": cfg.eval_every,
+    "eval_tokens": cfg.eval_tokens,
+})
+
+if DATASET_NAME == "names" and cfg.preview_prompt == "The ":
+    cfg.preview_prompt = "mar"
 
 while int(update_step.numpy()) < cfg.num_updates:
     x, y = next(it)
@@ -1194,12 +1338,54 @@ while int(update_step.numpy()) < cfg.num_updates:
         print(f"micro {micro:6d} | update {upd:5d}/{cfg.num_updates} | loss {loss.numpy():.4f} "
               f"| gnorm {gnorm.numpy():.3f} | lr {lr.numpy():.2e} | tok/s {tps:,.0f}")
 
-        preview = generate_from_prompt("mar", max_new_tokens=24, temperature=0.7, top_p=0.9)
+        train_rec = {
+            "event": "train",
+            "micro_step": micro,
+            "update": upd,
+            "train_loss": float(loss.numpy()),
+            "grad_norm": float(gnorm.numpy()),
+            "lr": float(lr.numpy()),
+            "tok_per_s": float(tps),
+        }
+
+        preview = generate_from_prompt(
+            cfg.preview_prompt,
+            max_new_tokens=cfg.preview_max_new_tokens,
+            temperature=0.7,
+            top_p=0.9,
+        )
         if preview:
-            print(f"prompt 'mar' -> {preview}")
+            shown = escape_preview_text(preview)
+            print(f"prompt '{cfg.preview_prompt}' -> {shown}")
+            train_rec["preview"] = shown
+
+        log_event(train_rec)
 
         last_log_time = now
         last_log_updates = upd
+
+    if (upd > 0) and bool(updated.numpy()) and (upd % cfg.eval_every == 0):
+        val_nll, val_bpc, val_ppl = evaluate_split(val_tokens, cfg.eval_tokens)
+        is_best = False
+        mark = ""
+        if val_bpc < best_val_bpc:
+            best_val_bpc = val_bpc
+            best_val_step = upd
+            best_path = best_manager.save(checkpoint_number=upd)
+            is_best = True
+            mark = " | best"
+            print(f"saved best checkpoint: {best_path}")
+
+        log_event({
+            "event": "eval",
+            "update": upd,
+            "val_nll": float(val_nll),
+            "val_bpc": float(val_bpc),
+            "val_ppl": float(val_ppl),
+            "is_best": is_best,
+        })
+
+        print(f"eval  update {upd:5d}/{cfg.num_updates} | val_nll {val_nll:.4f} | val_bpc {val_bpc:.4f} | val_ppl {val_ppl:.3f}{mark}")
 
     if cfg.save_every and bool(updated.numpy()) and (upd % cfg.save_every == 0):
         path = manager.save(checkpoint_number=upd)
@@ -1208,4 +1394,27 @@ while int(update_step.numpy()) < cfg.num_updates:
 path = manager.save(checkpoint_number=int(update_step.numpy()))
 print(f"saved checkpoint: {path}")
 
-generate_names(num=20, max_new_tokens=256, temperature=0.7, top_p=0.9)
+test_nll, test_bpc, test_ppl = evaluate_split(test_tokens, cfg.eval_tokens)
+print(f"test metrics | nll {test_nll:.4f} | bpc {test_bpc:.4f} | ppl {test_ppl:.3f}")
+
+summary = {
+    "run_id": run_id,
+    "dataset": DATASET_NAME,
+    "num_updates": int(update_step.numpy()),
+    "best_val_bpc": float(best_val_bpc),
+    "best_val_step": int(best_val_step),
+    "test_nll": float(test_nll),
+    "test_bpc": float(test_bpc),
+    "test_ppl": float(test_ppl),
+    "last_ckpt": path,
+    "best_ckpt": best_manager.latest_checkpoint,
+}
+
+with open(summary_json, "w", encoding="utf-8") as f:
+    json.dump(summary, f, indent=2, sort_keys=True)
+
+log_event({"event": "run_end", **summary})
+print(f"wrote run summary: {summary_json}")
+
+if DATASET_NAME == "names":
+    generate_names(num=20, max_new_tokens=256, temperature=0.7, top_p=0.9)

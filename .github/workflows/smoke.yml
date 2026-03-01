@@ -15,7 +15,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build test image
-        run: docker compose build gpt
+        run: docker build -t teligence-smoke -f Dockerfile .
 
       - name: Run smoke tests
-        run: docker compose run --rm gpt python -m unittest tests.test_smoke
+        run: docker run --rm -v "${{ github.workspace }}:/app" -w /app teligence-smoke python -m unittest tests.test_smoke

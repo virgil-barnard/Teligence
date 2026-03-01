@@ -1,0 +1,21 @@
+name: Smoke Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build test image
+        run: docker compose build gpt
+
+      - name: Run smoke tests
+        run: docker compose run --rm gpt python -m unittest tests.test_smoke

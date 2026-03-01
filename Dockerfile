@@ -6,6 +6,6 @@ WORKDIR /app
 RUN python -m pip install --no-cache-dir --upgrade pip && \
     python -m pip install --no-cache-dir "numpy<2"
 
-COPY gpt.py /app/gpt.py
+COPY *.py /app/
 
 CMD ["python", "gpt.py"]

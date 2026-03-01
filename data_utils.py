@@ -1,0 +1,137 @@
+import os
+import random
+import urllib.request
+import zipfile
+from dataclasses import dataclass
+
+import numpy as np
+import tensorflow as tf
+
+from config import GPTConfig
+
+
+@dataclass
+class DatasetBundle:
+    name: str
+    train_tokens: np.ndarray
+    val_tokens: np.ndarray
+    test_tokens: np.ndarray
+    stoi: dict
+    itos: dict
+    bos: int
+    vocab_size: int
+
+
+def _load_enwik8_bytes(data_dir):
+    os.makedirs(data_dir, exist_ok=True)
+    zip_path = os.path.join(data_dir, "enwik8.zip")
+    if not os.path.exists(zip_path):
+        enwik8_url = "http://mattmahoney.net/dc/enwik8.zip"
+        print(f"downloading enwik8 to {zip_path} ...")
+        urllib.request.urlretrieve(enwik8_url, zip_path)
+
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        raw = zf.read("enwik8")
+
+    assert len(raw) >= 100_000_000, "enwik8 must be at least 100M bytes"
+    train_raw = raw[:90_000_000]
+    val_raw = raw[90_000_000:95_000_000]
+    test_raw = raw[95_000_000:100_000_000]
+    return train_raw, val_raw, test_raw
+
+
+def _build_stream_and_doc_starts(docs_list, bos_token, token_lookup):
+    tokens = [bos_token]
+    doc_starts = [0]
+    for d in docs_list:
+        for ch in d:
+            tokens.append(token_lookup[ch])
+        tokens.append(bos_token)
+        doc_starts.append(len(tokens) - 1)
+    return np.array(tokens, dtype=np.int32), np.array(doc_starts, dtype=np.int32)
+
+
+def load_dataset(dataset_name: str, data_dir: str) -> DatasetBundle:
+    dataset_name = dataset_name.strip().lower()
+
+    if dataset_name == "enwik8":
+        train_raw, val_raw, test_raw = _load_enwik8_bytes(data_dir)
+        uchars = [chr(i) for i in range(256)]
+        stoi = {ch: i for i, ch in enumerate(uchars)}
+        itos = {i: ch for ch, i in stoi.items()}
+        bos = 256
+        vocab_size = 257
+        train_tokens = np.frombuffer(train_raw, dtype=np.uint8).astype(np.int32)
+        val_tokens = np.frombuffer(val_raw, dtype=np.uint8).astype(np.int32)
+        test_tokens = np.frombuffer(test_raw, dtype=np.uint8).astype(np.int32)
+        print("dataset: enwik8")
+        print(f"split bytes/tokens | train={len(train_tokens):,} val={len(val_tokens):,} test={len(test_tokens):,}")
+        print(f"vocab size: {vocab_size} (256 bytes + BOS)")
+        return DatasetBundle(dataset_name, train_tokens, val_tokens, test_tokens, stoi, itos, bos, vocab_size)
+
+    if dataset_name == "names":
+        if not os.path.exists("input.txt"):
+            names_url = "https://raw.githubusercontent.com/karpathy/makemore/988aa59/names.txt"
+            urllib.request.urlretrieve(names_url, "input.txt")
+
+        docs_all = [line.strip() for line in open("input.txt") if line.strip()]
+        random.shuffle(docs_all)
+        n = len(docs_all)
+        n_train = int(0.9 * n)
+        n_val = int(0.05 * n)
+        docs_train = docs_all[:n_train]
+        docs_val = docs_all[n_train:n_train + n_val]
+        docs_test = docs_all[n_train + n_val:]
+
+        uchars = sorted(set("".join(docs_all)))
+        stoi = {ch: i for i, ch in enumerate(uchars)}
+        itos = {i: ch for ch, i in stoi.items()}
+        bos = len(uchars)
+        vocab_size = len(uchars) + 1
+
+        train_tokens, _ = _build_stream_and_doc_starts(docs_train, bos, stoi)
+        val_tokens, _ = _build_stream_and_doc_starts(docs_val, bos, stoi)
+        test_tokens, _ = _build_stream_and_doc_starts(docs_test, bos, stoi)
+
+        print("dataset: names")
+        print(f"split docs | train={len(docs_train):,} val={len(docs_val):,} test={len(docs_test):,}")
+        print(f"vocab size: {vocab_size} (including BOS/EOS/boundary)")
+        return DatasetBundle(dataset_name, train_tokens, val_tokens, test_tokens, stoi, itos, bos, vocab_size)
+
+    raise ValueError(f"Unsupported DATASET='{dataset_name}'. Use 'enwik8' or 'names'.")
+
+
+def make_random_window_dataset(tokens_np: np.ndarray, cfg: GPTConfig):
+    block_len = cfg.seq_len + 1
+    max_start = len(tokens_np) - block_len
+
+    def gen():
+        while True:
+            s = np.random.randint(0, max_start + 1)
+            seg = tokens_np[s:s + block_len]
+            yield seg[:-1], seg[1:]
+
+    sig = (
+        tf.TensorSpec(shape=(cfg.seq_len,), dtype=tf.int32),
+        tf.TensorSpec(shape=(cfg.seq_len,), dtype=tf.int32),
+    )
+    ds = tf.data.Dataset.from_generator(gen, output_signature=sig)
+    ds = ds.batch(cfg.batch_size, drop_remainder=True)
+    ds = ds.prefetch(tf.data.AUTOTUNE)
+    return ds
+
+
+def iter_eval_batches(tokens_np: np.ndarray, cfg: GPTConfig, max_tokens: int):
+    block_len = cfg.seq_len + 1
+    max_tokens = max(cfg.seq_len, int(max_tokens))
+    starts = np.arange(0, len(tokens_np) - block_len + 1, cfg.seq_len, dtype=np.int64)
+    if len(starts) == 0:
+        raise ValueError("Eval split too short for current seq_len")
+    max_seq = max(1, max_tokens // cfg.seq_len)
+    starts = starts[:max_seq]
+
+    for i in range(0, len(starts), cfg.batch_size):
+        batch_starts = starts[i:i + cfg.batch_size]
+        x = np.stack([tokens_np[s:s + cfg.seq_len] for s in batch_starts], axis=0)
+        y = np.stack([tokens_np[s + 1:s + 1 + cfg.seq_len] for s in batch_starts], axis=0)
+        yield x, y

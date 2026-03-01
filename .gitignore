@@ -1,0 +1,32 @@
+# Python cache/build
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Editor/OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Experiment artifacts
+runs/
+data/
+ckpt_*/
+input.txt
+
+# TensorFlow checkpoint shards (if written outside ignored dirs)
+checkpoint
+*.index
+*.data-00000-of-00001
+
+# Logs
+*.log

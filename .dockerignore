@@ -1,0 +1,7 @@
+.git
+.gitignore
+
+# Keep Docker build context minimal
+*
+!*.py
+!Dockerfile

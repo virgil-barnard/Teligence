@@ -43,6 +43,11 @@ Each run writes to `runs/<run_id>/`:
 - `ckpt_last/` (latest checkpoints)
 - `ckpt_best/` (best by validation BPC)
 
+Repo hygiene defaults:
+
+- experiment outputs (`runs/`, `data/`, checkpoints, logs) are git-ignored
+- Docker build context is minimized via `.dockerignore` for faster `docker compose up --build`
+
 ### Sweep mode
 
 Run a short hyperparameter sweep:
@@ -52,3 +57,21 @@ python sweep.py
 ```
 
 It launches multiple trials (via `docker compose run` by default), ranks them by `best_val_bpc`, and writes a sweep report to `runs/<sweep_name>_report.json`.
+
+### Smoke tests
+
+Run lightweight module-integrity tests in Docker:
+
+```bash
+docker compose run --rm gpt python -m unittest tests.test_smoke
+```
+
+### Project layout
+
+- `gpt.py`: main training entrypoint
+- `config.py`: config/env parsing and validation
+- `data_utils.py`: dataset loading and dataloaders
+- `modeling.py`: model/attention implementation
+- `train_utils.py`: optimizer, train step, eval, sampling helpers
+- `run_utils.py`: run artifact and metrics logging
+- `runtime.py`: GPU memory-growth and reproducibility setup

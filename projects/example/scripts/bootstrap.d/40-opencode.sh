@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-command -v opencode >/dev/null 2>&1 || exit 0
 
-# OpenCode config is mounted at /run/configs/opencode by compose.yaml
-if [[ -f "${OPENCODE_CONFIG:-}" ]]; then
-  :
+# If an OpenCode config file is mounted, point to it.
+if [[ -f "${CONFIG_DIR:-/run/configs}/opencode/opencode.jsonc" ]]; then
+  export OPENCODE_CONFIG="${CONFIG_DIR:-/run/configs}/opencode/opencode.jsonc"
 fi
-
-# Provider keys are expected from /run/secrets/llm_env (loaded by 00-load-secrets.sh)

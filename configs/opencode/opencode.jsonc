@@ -1,13 +1,16 @@
 {
-  // OpenCode config (keep this secretless; use env vars for keys).
-  // Docs: https://opencode.ai/docs/config/
-  "workspace": "/workspace",
-  "ui": {
-    "theme": "system"
+  "$schema": "https://opencode.ai/config.json",
+
+  // Keep this config non-secret. API keys should come from env vars or opencode auth storage.
+
+  "shell": {
+    "path": "/bin/bash",
+    "args": ["-lc"]
   },
-  "agent": {
-    // Example knobs; adjust to taste
-    "autoApplyEdits": false,
-    "maxIterations": 20
-  }
+
+  // You can add rules/instructions files here.
+  "instructions": [
+    "AGENTS.md",
+    ".cursor/rules/*.md"
+  ]
 }

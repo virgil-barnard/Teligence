@@ -1,0 +1,4 @@
+# Avoid CRLF breaking Linux shell scripts when editing on Windows
+*.sh text eol=lf
+*.bash text eol=lf
+*.env text eol=lf

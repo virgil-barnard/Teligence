@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
 command -v git >/dev/null 2>&1 || exit 0
 
 repo_url="${REPO_URL:-}"

@@ -1,5 +1,17 @@
-# Optional per-project overrides.
-# This file is automatically included when present.
-# Add project-specific mounts/ports/devices here.
 services:
-  agent: {}
+  agent:
+    # Project-specific overrides go here (ports, extra volumes, devices, privileges).
+    # Example:
+    # ports:
+    #   - "8000:8000"
+    # volumes:
+    #   - type: bind
+    #     source: /data/shared
+    #     target: /data
+    #     read_only: true
+    #
+    # If you need to relax hardening defaults:
+    # cap_add:
+    #   - SYS_PTRACE
+    # security_opt:
+    #   - apparmor:unconfined

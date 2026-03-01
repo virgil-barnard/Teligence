@@ -5,9 +5,12 @@ services:
       dockerfile: Dockerfile
       args:
         BASE_IMAGE: ${BASE_IMAGE:-ubuntu:24.04}
+        GH_VERSION: ${GH_VERSION:-2.57.0}
+        GLAB_VERSION: ${GLAB_VERSION:-1.46.0}
+        OPENCODE_VERSION: ${OPENCODE_VERSION:-}
     image: ${IMAGE_TAG:-agent-${PROJ}:latest}
 
-    # Long-running workstation container (use `make task` / `make shell`).
+    # Keep a stable "workstation" container; use `make task` / `make shell` to interact.
     command: ["bash", "-lc", "sleep infinity"]
 
     init: true
@@ -15,15 +18,13 @@ services:
     stdin_open: true
     working_dir: /workspace
 
-    # Immutable container filesystem; write only to tmpfs and mounted volumes.
+    # Hardening-ish defaults; relax per-project in projects/<proj>/compose.yaml if needed.
     read_only: true
     tmpfs:
       - /tmp
       - /var/tmp
 
-    # Run as host user by default. If your UID/GID differs, Makefile passes LOCAL_UID/LOCAL_GID.
     user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
-
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -34,14 +35,10 @@ services:
       WORKSPACE: /workspace
       CONFIG_DIR: /run/configs
 
-      # OpenCode config is mounted read-only. You can override in configs/opencode/opencode.jsonc.
+      # OpenCode config override
       OPENCODE_CONFIG: /run/configs/opencode/opencode.jsonc
+      OPENCODE_DISABLE_AUTOUPDATE: "1"
 
-      # Convenience endpoints inside the compose network:
-      OLLAMA_HOST: http://ollama:11434
-      LITELLM_BASE_URL: http://litellm:4000
-
-    # Project env is shareable / non-secret (and is also used for interpolation via CLI --env-file in Makefile)
     env_file:
       - path: ./projects/${PROJ}/project.env
         required: true
@@ -55,43 +52,21 @@ services:
         target: /run/configs/opencode
         read_only: true
 
-    # Secrets are mounted as files under /run/secrets/<name>
+    # Compose secrets mount at /run/secrets/<secret_name>
     secrets:
       - git_env
       - github_env
       - glab_env
       - llm_env
 
-  # Optional local model server
   ollama:
     profiles: ["ollama"]
     image: ollama/ollama:latest
-    # Persist downloaded models across runs
     volumes:
       - ollama_data:/root/.ollama
     ports:
-      - "11434:11434"
-
-  # Optional OpenAI-compatible LLM gateway (LiteLLM)
-  litellm:
-    profiles: ["gateway"]
-    image: docker.litellm.ai/berriai/litellm:main-stable
-    ports:
-      # Bind to localhost by default (safer). Change if you want LAN access.
-      - "127.0.0.1:4000:4000"
-    volumes:
-      - type: bind
-        source: ./configs/litellm/litellm-config.yaml
-        target: /app/config.yaml
-        read_only: true
-      - type: bind
-        source: ./gateways/litellm/entrypoint.sh
-        target: /entrypoint.sh
-        read_only: true
-    secrets:
-      - litellm_env
-      - providers_env
-    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+      - "127.0.0.1:11434:11434"
+    restart: unless-stopped
 
 secrets:
   git_env:
@@ -100,16 +75,8 @@ secrets:
     file: ./configs/github/github.env
   glab_env:
     file: ./configs/glab/glab.env
-
-  # Agent-side LLM runtime env (proxy key + base URL, etc.)
   llm_env:
     file: ./configs/llm/llm.env
-
-  # LiteLLM gateway secrets + upstream provider keys
-  litellm_env:
-    file: ./configs/litellm/litellm.env
-  providers_env:
-    file: ./configs/providers/providers.env
 
 volumes:
   ollama_data:

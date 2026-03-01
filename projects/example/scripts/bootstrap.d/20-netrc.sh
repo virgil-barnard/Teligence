@@ -2,21 +2,22 @@
 set -euo pipefail
 
 netrc="$HOME/.netrc"
+mkdir -p "$(dirname "$netrc")"
 touch "$netrc"
 chmod 600 "$netrc"
 
-# GitHub
-if [[ -n "${GITHUB_TOKEN:-}" && "${GITHUB_TOKEN}" != "ghp_REPLACE_ME" ]]; then
-  user="${GITHUB_USER:-x-access-token}"
+# GitHub HTTPS git auth
+if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+  host="${GITHUB_HOST:-github.com}"
   cat >>"$netrc" <<EOF
-machine github.com
-  login ${user}
+machine ${host}
+  login x-access-token
   password ${GITHUB_TOKEN}
 EOF
 fi
 
-# GitLab
-if [[ -n "${GITLAB_TOKEN:-}" && "${GITLAB_TOKEN}" != "glpat_REPLACE_ME" ]]; then
+# GitLab HTTPS git auth
+if [[ -n "${GITLAB_TOKEN:-}" ]]; then
   host="${GITLAB_HOST:-gitlab.com}"
   cat >>"$netrc" <<EOF
 machine ${host}

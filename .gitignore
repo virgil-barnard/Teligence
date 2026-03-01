@@ -1,19 +1,9 @@
-# Secrets / tokens / personal env files
-configs/**/**.env
-configs/**/**.env.*
-configs/**/**.pem
-configs/**/**.key
-configs/**/**/id_rsa*
-configs/**/**/id_ed25519*
-configs/**/**/known_hosts
-configs/**/**/config.yml
+# Never commit user-specific secrets
+configs/
 
-# Project workspaces (persistent and often large)
+# Project workspaces are persistent + may contain large/private files
 projects/**/workspace/
 
-# Python / misc
+# Common junk
 **/__pycache__/
-**/.pytest_cache/
-**/.mypy_cache/
-**/.ruff_cache/
 **/.DS_Store

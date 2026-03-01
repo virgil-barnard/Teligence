@@ -1,2 +1,1 @@
-# Additional Python requirements (pip), one per line. Example:
-# requests==2.32.0
+# Optional pip requirements (only installed if pip3 exists in the base image)

@@ -1,2 +1,2 @@
-# Project workspace is host-persistent and should not be committed
+# Keep workspace out of git by default
 workspace/

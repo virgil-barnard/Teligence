@@ -1,3 +1,4 @@
-# Add OS packages here, one per line. Example:
+# One package per line (optional). Examples:
 # python3
 # python3-pip
+# build-essential

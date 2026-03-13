@@ -19,6 +19,37 @@ If you already built the image:
 docker compose up
 ```
 
+### Startup script options
+
+The default startup path is still `gpt.py`.
+
+- Default (existing behavior):
+
+```bash
+docker compose run --rm gpt
+```
+
+- Switch startup script through launcher env:
+
+```bash
+docker compose run --rm -e APP_ENTRY=proof_agent gpt
+```
+
+- Pass CLI args to selected startup script:
+
+```bash
+docker compose run --rm \
+  -e APP_ENTRY=proof_agent \
+  -e APP_ARGS="--mode sample --seq_len 128 --train_steps 200" \
+  gpt
+```
+
+- Optional dedicated compose service for proof prototype:
+
+```bash
+docker compose --profile proof run --rm proof_agent
+```
+
 ### Text datasets
 
 Supported `DATASET` values:

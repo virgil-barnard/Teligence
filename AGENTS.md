@@ -173,3 +173,31 @@ No additional Cursor/Copilot repository instruction files are currently availabl
 - Run: `python -m unittest tests.test_smoke`
 - If Docker-related change, also run: `docker build -t teligence-smoke -f Dockerfile .`
 - Confirm no artifacts are staged from `runs/`, `data/`, or checkpoints
+
+## 7) Autoresearch Workflow (Agent-Facing)
+
+Autonomous experimentation scaffolding exists under `research/`.
+
+- Program spec: `research/program.md`
+- Result schema template: `research/results.template.tsv`
+- Scoring helper: `research/score.py`
+- Loop helper CLI: `scripts/autoresearch_loop.py`
+
+Initialize (once per branch/session):
+
+- `python scripts/autoresearch_loop.py init`
+
+Record one run (auto command mode):
+
+- Text: `python scripts/autoresearch_loop.py run --track gpt_text --run-name auto_text --description "baseline"`
+- Factoring: `python scripts/autoresearch_loop.py run --track proof_factoring --run-name auto_factoring --description "baseline"`
+- Affine: `python scripts/autoresearch_loop.py run --track proof_affine --run-name auto_affine --description "baseline"`
+
+Inspect current progress:
+
+- `python scripts/autoresearch_loop.py leaderboard`
+
+Notes:
+
+- `research/results.tsv` and `research/logs/` are intentionally gitignored artifacts.
+- Prefer this helper over ad-hoc logging so keep/discard decisions are reproducible.

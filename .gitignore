@@ -33,3 +33,7 @@ checkpoint
 
 # Logs
 *.log
+
+# Autoresearch artifacts
+research/results.tsv
+research/logs/

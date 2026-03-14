@@ -8,6 +8,43 @@ This repository contains a shared TensorFlow GPT backbone plus multiple training
 
 All variants now default to outputs under `runs/`.
 
+## Research framing and inspirations
+
+This project follows the spirit of Karpathy's autonomous iteration workflows:
+
+- `autoresearch`: https://github.com/karpathy/autoresearch
+- `nanoGPT`: https://github.com/karpathy/nanoGPT
+
+Like those projects, we optimize the core GPT architecture and training loop through fast, repeatable runs. The main difference here is that we evaluate improvements across multiple domains instead of language modeling only:
+
+- text next-token prediction (`gpt_text`)
+- symbolic algebra rewrite control (`proof_factoring`)
+- finite affine/projective theorem control (`proof_affine`)
+
+This multi-domain setup is intended to reward architecture and optimization changes that generalize beyond one task family.
+
+## Autoresearch-style workflow in this repo
+
+Research automation scaffolding lives under `research/` and `scripts/autoresearch_loop.py`.
+
+Initialize run ledger:
+
+```bash
+python scripts/autoresearch_loop.py init
+```
+
+Record one run:
+
+```bash
+python scripts/autoresearch_loop.py run --track gpt_text --run-name auto_text --description "baseline"
+```
+
+View best/recent results:
+
+```bash
+python scripts/autoresearch_loop.py leaderboard
+```
+
 ## Repository layout
 
 - `scripts/gpt_text.py` - text-domain training entrypoint

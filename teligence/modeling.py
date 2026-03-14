@@ -654,13 +654,17 @@ class ExplicitGPT(tf.keras.Model):
     def _lm_weight(self):
         return self.wte.embeddings if self.cfg.tie_embeddings else self.lm_head
 
-    def call(self, idx, training=False):
+    def encode(self, idx, training=False):
         x = self.wte(idx)
         x = tf.cast(x, COMPUTE_DTYPE)
         x = self.emb_norm(x)
         for blk in self.blocks:
             x = blk(x, training=training)
         x = self.final_norm(x)
+        return x
+
+    def call(self, idx, training=False):
+        x = self.encode(idx, training=training)
         w = self._lm_weight()
         return tf.einsum("btc,vc->btv", x, tf.cast(w, x.dtype))
 

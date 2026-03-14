@@ -1,12 +1,7 @@
 import os
-import sys
 import time
 
 import numpy as np
-
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if REPO_ROOT not in sys.path:
-    sys.path.insert(0, REPO_ROOT)
 
 from teligence.config import GPTConfig, validate_config
 from teligence.data_utils import load_dataset, make_random_window_dataset

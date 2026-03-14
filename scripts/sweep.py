@@ -15,7 +15,7 @@ def run_trial(trial_env):
             cmd.extend(["-e", f"{k}={trial_env[k]}"])
         cmd.append("gpt")
     else:
-        cmd = ["python", "gpt.py"]
+        cmd = ["python", "scripts/gpt_text.py"]
 
     print("\n=== Trial", trial_env["RUN_NAME"], "===")
     print("Command:", " ".join(cmd))

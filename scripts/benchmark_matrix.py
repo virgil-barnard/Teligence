@@ -37,7 +37,7 @@ def _run_trial(run_name: str, trial_env: dict, use_docker: bool):
             cmd.extend(["-e", f"{k}={trial_env[k]}"])
         cmd.append("gpt")
     else:
-        cmd = ["python", "gpt.py"]
+        cmd = ["python", "scripts/gpt_text.py"]
 
     print(f"\n=== Benchmark {run_name} ===")
     print("Command:", " ".join(cmd))

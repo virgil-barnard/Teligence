@@ -39,7 +39,7 @@ If running locally anyway, mirror Docker dependency assumptions.
   - `python -m pip install --upgrade pip`
   - `python -m pip install "numpy<2" tensorflow`
 - Run training locally:
-  - `python gpt.py`
+  - `python scripts/gpt_text.py`
 - Run benchmark matrix locally:
   - `python scripts/benchmark_matrix.py`
 
@@ -76,11 +76,14 @@ Agent expectation:
 
 - `scripts/launcher.py`: startup router for text/math/geometry variants
 - `scripts/gpt_text.py`: text-language training entrypoint and orchestration
-- `gpt.py`: compatibility wrapper for legacy commands
-- `experiments/proof_rewrite_gpt.py`: symbolic rewrite proof trainer
-- `experiments/icarus_projective_actionptr_v2.py`: finite affine/projective theorem-control trainer
+- `experiments/proof_factoring_gpt.py`: symbolic rewrite/factoring proof trainer
+- `experiments/proof_factoring_domain.py`: rewrite/task/data-generation domain layer
+- `experiments/proof_affine_gpt.py`: finite affine/projective theorem-control trainer
+- `experiments/proof_affine_domain.py`: geometry/task/data-generation domain layer
 - `teligence/config.py`: config/env parsing + validation
 - `teligence/modeling.py`: model layers, attention, precision controls
+- `teligence/action_heads.py`: task heads built on `ExplicitGPT`
+- `teligence/experiment_utils.py`: shared experiment loop/schedule helpers
 - `teligence/train_utils.py`, `teligence/data_utils.py`, `teligence/tokenizer.py`: training/data/tokenization helpers
 - `teligence/run_utils.py`, `teligence/runtime.py`: run metadata + runtime setup
 - `scripts/benchmark_matrix.py`, `scripts/sweep.py`: experiment runners

@@ -16,7 +16,7 @@ services:
       - ./:/app
     command: ["python", "scripts/launcher.py"]
 
-  proof_math:
+  proof_factoring_gpt:
     image: teligence-gpt:latest
     build:
       context: .
@@ -26,12 +26,12 @@ services:
     tty: true
     profiles: ["proof"]
     environment:
-      APP_ENTRY: "proof_math"
+      APP_ENTRY: "proof_factoring"
     volumes:
       - ./:/app
     command: ["python", "scripts/launcher.py"]
 
-  icarus_affine:
+  proof_affine_gpt:
     image: teligence-gpt:latest
     build:
       context: .
@@ -41,7 +41,7 @@ services:
     tty: true
     profiles: ["icarus"]
     environment:
-      APP_ENTRY: "icarus_affine"
+      APP_ENTRY: "proof_affine"
     volumes:
       - ./:/app
     command: ["python", "scripts/launcher.py"]

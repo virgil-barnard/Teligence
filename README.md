@@ -1,161 +1,163 @@
-## Teligence GPT Experiments
+## Teligence Mini-GPT Lab
 
-This repo trains a small TensorFlow GPT model with GPU support in Docker, focused on text-domain architecture evaluation.
+This repository contains a shared TensorFlow GPT backbone plus multiple training scripts for different action/language spaces:
 
-### Quick start
+- text language modeling (`scripts/gpt_text.py`, with `gpt.py` compatibility wrapper)
+- symbolic algebra rewrite proofs (`experiments/proof_rewrite_gpt.py`)
+- finite affine/projective geometry theorem control (`experiments/icarus_projective_actionptr_v2.py`)
+
+All variants now default to outputs under `runs/`.
+
+## Repository layout
+
+- `scripts/gpt_text.py` - text-domain training entrypoint
+- `gpt.py` - compatibility wrapper for legacy commands
+- `experiments/proof_rewrite_gpt.py` - proof-rewrite environment + GPT policy
+- `experiments/icarus_projective_actionptr_v2.py` - affine/projective verifier + action-pointer GPT
+- `scripts/launcher.py` - unified script launcher via `APP_ENTRY`
+- `scripts/benchmark_matrix.py`, `scripts/sweep.py` - experiment orchestration scripts
+- `teligence/config.py`, `teligence/modeling.py`, `teligence/train_utils.py` - shared GPT architecture/training utilities
+- `docker-compose.yml`, `Dockerfile` - Docker-first workflow
+- `tests/test_smoke.py` - smoke tests
+
+## Quick start
+
+Build and run default text training:
 
 ```bash
 docker compose up --build
 ```
 
-This starts:
+TensorBoard is available at `http://localhost:6006`.
 
-- `gpt` training
-- `tensorboard` at `http://localhost:6006`
-
-If you already built the image:
+If image already exists:
 
 ```bash
 docker compose up
 ```
 
-### Startup script options
+## Unified startup options
 
-The default startup path is still `gpt.py`.
-
-- Default (existing behavior):
+The launcher is the single entry path:
 
 ```bash
 docker compose run --rm gpt
 ```
 
-- Switch startup script through launcher env:
+Switch variants with `APP_ENTRY`:
 
 ```bash
-docker compose run --rm -e APP_ENTRY=proof_agent gpt
+docker compose run --rm -e APP_ENTRY=gpt_text gpt
+docker compose run --rm -e APP_ENTRY=proof_math gpt
+docker compose run --rm -e APP_ENTRY=icarus_affine gpt
 ```
 
-- Pass CLI args to selected startup script:
+Pass variant-specific flags using `APP_ARGS`:
 
 ```bash
 docker compose run --rm \
-  -e APP_ENTRY=proof_agent \
-  -e APP_ARGS="--mode sample --seq_len 128 --train_steps 200" \
+  -e APP_ENTRY=proof_math \
+  -e APP_ARGS="--mode train --train_steps 4000" \
   gpt
 ```
 
-- Optional dedicated compose service for proof prototype:
+Profile services are also available:
 
 ```bash
-docker compose --profile proof run --rm proof_agent
+docker compose --profile proof run --rm proof_math
+docker compose --profile icarus run --rm icarus_affine
 ```
 
-- Run the projective action-pointer prototype (TensorFlow backbone):
+Legacy launcher aliases remain supported:
+
+- `proof_agent` -> `proof_math`
+- `icarus_projective_v2` -> `icarus_affine`
+
+## Output directories (consistent defaults)
+
+- `gpt_text` (`scripts/gpt_text.py`): `runs/<run_name>/...`
+- `proof_math` (`experiments/proof_rewrite_gpt.py`): `runs/proof_rewrite_gpt/ckpt_last` (or `runs/<run_name>/...` via args)
+- `icarus_affine` (`experiments/icarus_projective_actionptr_v2.py`): `runs/icarus_projective_v2/ckpt_last` and `ckpt_best`
+
+Use these knobs to override paths:
+
+- text: `RUN_NAME`, `RUNS_DIR`
+- proof: `--run_name`, `--runs_dir`, `--ckpt`
+- icarus: `--out_dir`, `--resume_checkpoint`
+
+## Architecture and action-space differences
+
+### 1) `gpt_text` (`scripts/gpt_text.py`)
+
+- **Backbone**: shared `ExplicitGPT` (TF, GQA, RoPE/ALiBi options, flash-attn path)
+- **Input space**: raw token streams from text datasets (`enwik8`, `tinyshakespeare`, `names`)
+- **Output space**: next-token language modeling over tokenizer vocabulary
+- **Objective**: standard autoregressive LM loss
+
+### 2) `proof_math` (`experiments/proof_rewrite_gpt.py`)
+
+- **Backbone**: shared `ExplicitGPT`
+- **Input space**: serialized symbolic equation states + control tokens (`GOAL`, `STATE`, `ACT`)
+- **Action/language space**: rewrite action tokens (`A_<rule>_<node_index>`)
+- **Objective**: masked supervised action prediction + environment rollout solve-rate eval
+- **Notes**: curriculum support and traceable eval episodes
+
+### 3) `icarus_affine` (`experiments/icarus_projective_actionptr_v2.py`)
+
+- **Backbone**: shared `ExplicitGPT` as state encoder
+- **Input space**: serialized finite-geometry proof state (objects, facts, goal, history)
+- **Action/language space**: legal-action list over typed theorem actions (`CONSTRUCT_*`, `ASSERT_*`, `STOP`)
+- **Policy head**: compositional action-pointer (op + args embeddings -> action key)
+- **Extra head**: value prediction (`steps_to_goal`) for search guidance
+- **Inference**: greedy or best-first search over verifier-legal actions
+
+## Common commands
+
+Run smoke tests:
 
 ```bash
-docker compose run --rm -e APP_ENTRY=icarus_projective_v2 gpt
-docker compose run --rm -e APP_ENTRY=icarus_projective_v2 -e APP_ARGS="--mode rollout --rollout_mode search --demo_tasks 5" gpt
+docker compose run --rm gpt python -m unittest tests.test_smoke
 ```
 
-- Optional dedicated compose service for Icarus prototype:
+Run single smoke test method:
 
 ```bash
-docker compose --profile icarus run --rm icarus_projective_v2
+docker compose run --rm gpt python -m unittest tests.test_smoke.SmokeTests.test_model_forward_shape
 ```
 
-### Text datasets
-
-Supported `DATASET` values:
-
-- `enwik8` (byte-level default)
-- `tinyshakespeare` (char-level default)
-- `names` (char-level default)
-
-Examples:
+Run benchmark matrix (text profiles):
 
 ```bash
-docker compose run --rm -e DATASET=enwik8 gpt
-docker compose run --rm -e DATASET=tinyshakespeare gpt
-docker compose run --rm -e DATASET=names gpt
+python scripts/benchmark_matrix.py
 ```
 
-For `tinyshakespeare`, if download is blocked, set a local file path:
+## Resume training examples
+
+Text model:
 
 ```bash
 docker compose run --rm \
-  -e DATASET=tinyshakespeare \
-  -e TINY_SHAKESPEARE_PATH=./data/tinyshakespeare.txt \
-  gpt
-```
-
-### Resume training
-
-- Resume same run id: set `RUN_NAME` to prior run id.
-- Resume from specific run/path: `RESUME_FROM=<run_id|checkpoint_dir|checkpoint_prefix>`.
-- Continue for relative extra steps: `EXTRA_UPDATES=<n>`.
-
-Example:
-
-```bash
-docker compose run --rm \
+  -e APP_ENTRY=gpt_text \
   -e RUN_NAME=my_run \
   -e RESUME_FROM=my_run \
   -e EXTRA_UPDATES=5000 \
   gpt
 ```
 
-### TensorBoard: what to watch
-
-Enable visualization logs (already enabled by default in compose):
-
-- `train/loss`, `train/lr`, `train/grad_norm`, `train/tok_per_s`
-- `eval/val_nll`, `eval/val_bpc`, `eval/val_ppl`
-- weight histograms (`weights/*`)
-- attention probe images (`attention/*`) on control prompt
-
-Useful knobs:
-
-- `LOG_EVERY`, `EVAL_EVERY`
-- `TB_HIST_EVERY`
-- `ATTN_VIZ_EVERY`, `ATTN_VIZ_MAX_LAYERS`, `ATTN_VIZ_MAX_HEADS`
-
-Tip: if you only see one point, check you selected the latest run in TensorBoard and your `LOG_EVERY` is not too sparse.
-
-### Cross-domain benchmark matrix (text-only)
-
-Run architecture comparison across text datasets:
+Proof model:
 
 ```bash
-python benchmark_matrix.py
+docker compose run --rm \
+  -e APP_ENTRY=proof_math \
+  -e APP_ARGS="--run_name proof_rewrite_gpt --train_steps 12000" \
+  gpt
 ```
 
-Defaults:
-
-- profiles: `enwik8,tinyshakespeare,names`
-- outputs:
-  - `runs/<matrix_name>_report.json`
-  - `runs/<matrix_name>_report.csv`
-
-Useful knobs:
-
-- `BENCH_NUM_UPDATES`, `BENCH_LOG_EVERY`, `BENCH_EVAL_EVERY`, `BENCH_EVAL_TOKENS`
-- `BENCH_PROFILES=enwik8,tinyshakespeare,names`
-- `BENCH_USE_DOCKER=1`
-
-### Smoke tests
+Icarus model:
 
 ```bash
-docker compose run --rm gpt python -m unittest tests.test_smoke
+docker compose run --rm \
+  -e APP_ENTRY=icarus_affine \
+  -e APP_ARGS="--mode train --out_dir runs/icarus_projective_v2 --resume_checkpoint runs/icarus_projective_v2/ckpt_last/ckpt-200 --max_iters 8000" \
+  gpt
 ```
-
-### Project layout
-
-- `gpt.py`: training entrypoint
-- `config.py`: config/env parsing and validation
-- `data_utils.py`: text dataset loading and dataloaders
-- `tokenizer.py`: tokenizer strategies
-- `modeling.py`: model and attention implementation
-- `train_utils.py`: train/eval/sampling/TensorBoard helpers
-- `run_utils.py`: run artifact and metrics logging
-- `runtime.py`: runtime setup (GPU memory growth, seeds)
-- `benchmark_matrix.py`: text-domain benchmark runner

@@ -3,11 +3,11 @@ import unittest
 import numpy as np
 import tensorflow as tf
 
-from config import GPTConfig, validate_config
-from data_utils import iter_eval_batches, make_random_window_dataset
-from modeling import ExplicitGPT, set_precision
-from tokenizer import ByteTokenizer, CharTokenizer
-from train_utils import build_train_micro_step, build_train_state, evaluate_model
+from teligence.config import GPTConfig, validate_config
+from teligence.data_utils import iter_eval_batches, make_random_window_dataset
+from teligence.modeling import ExplicitGPT, set_precision
+from teligence.tokenizer import ByteTokenizer, CharTokenizer
+from teligence.train_utils import build_train_micro_step, build_train_state, evaluate_model
 
 
 class SmokeTests(unittest.TestCase):

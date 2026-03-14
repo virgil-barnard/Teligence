@@ -5,8 +5,8 @@ from dataclasses import dataclass
 import numpy as np
 import tensorflow as tf
 
-from config import GPTConfig
-from data_utils import iter_eval_batches
+from teligence.config import GPTConfig
+from teligence.data_utils import iter_eval_batches
 
 
 def lr_schedule(cfg: GPTConfig, update_step_int64):

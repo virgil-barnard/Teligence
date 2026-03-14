@@ -7,8 +7,8 @@ from dataclasses import dataclass
 import numpy as np
 import tensorflow as tf
 
-from config import GPTConfig
-from tokenizer import make_tokenizer
+from teligence.config import GPTConfig
+from teligence.tokenizer import make_tokenizer
 
 
 @dataclass

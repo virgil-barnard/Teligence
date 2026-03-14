@@ -5,9 +5,13 @@ import sys
 
 
 ENTRYPOINTS = {
-    "gpt": "gpt.py",
-    "proof_agent": "proof_gpt_agent_onefile.py",
-    "icarus_projective_v2": "icarus_projective_actionptr_v2.py",
+    "gpt": "scripts/gpt_text.py",
+    "gpt_text": "scripts/gpt_text.py",
+    "proof_math": "experiments/proof_rewrite_gpt.py",
+    "icarus_affine": "experiments/icarus_projective_actionptr_v2.py",
+    # Legacy aliases
+    "proof_agent": "experiments/proof_rewrite_gpt.py",
+    "icarus_projective_v2": "experiments/icarus_projective_actionptr_v2.py",
 }
 
 

@@ -8,7 +8,7 @@ This repository is a Python + TensorFlow GPT experimentation project, with Docke
 
 - Main language: Python 3
 - ML stack: TensorFlow 2.16.x + NumPy (`numpy<2`)
-- Entrypoint: `gpt.py`
+- Primary entrypoint: `scripts/launcher.py` (`APP_ENTRY` selects script)
 - Test framework: Python `unittest` (`tests/test_smoke.py`)
 - Container workflow is primary (`Dockerfile`, `docker-compose.yml`)
 - CI smoke workflow: `.github/workflows/smoke.yml`
@@ -28,7 +28,7 @@ Use these commands from repo root.
 - Run one-off training container:
   - `docker compose run --rm gpt`
 - Run one-off script in training image:
-  - `docker compose run --rm gpt python benchmark_matrix.py`
+  - `docker compose run --rm gpt python scripts/benchmark_matrix.py`
 
 ### Local (non-Docker) run
 
@@ -41,7 +41,7 @@ If running locally anyway, mirror Docker dependency assumptions.
 - Run training locally:
   - `python gpt.py`
 - Run benchmark matrix locally:
-  - `python benchmark_matrix.py`
+  - `python scripts/benchmark_matrix.py`
 
 ### Tests
 
@@ -74,12 +74,16 @@ Agent expectation:
 
 ## 3) Project Structure and Ownership Hints
 
-- `gpt.py`: training entrypoint and orchestration
-- `config.py`: config/env parsing + validation
-- `modeling.py`: model layers, attention, precision controls
-- `train_utils.py`, `data_utils.py`, `tokenizer.py`: training/data/tokenization helpers
-- `run_utils.py`, `runtime.py`: run metadata + runtime setup
-- `benchmark_matrix.py`, `sweep.py`: experiment runners
+- `scripts/launcher.py`: startup router for text/math/geometry variants
+- `scripts/gpt_text.py`: text-language training entrypoint and orchestration
+- `gpt.py`: compatibility wrapper for legacy commands
+- `experiments/proof_rewrite_gpt.py`: symbolic rewrite proof trainer
+- `experiments/icarus_projective_actionptr_v2.py`: finite affine/projective theorem-control trainer
+- `teligence/config.py`: config/env parsing + validation
+- `teligence/modeling.py`: model layers, attention, precision controls
+- `teligence/train_utils.py`, `teligence/data_utils.py`, `teligence/tokenizer.py`: training/data/tokenization helpers
+- `teligence/run_utils.py`, `teligence/runtime.py`: run metadata + runtime setup
+- `scripts/benchmark_matrix.py`, `scripts/sweep.py`: experiment runners
 - `tests/test_smoke.py`: fast safety tests
 
 ## 4) Code Style Guidelines (Observed Conventions)

@@ -3,7 +3,7 @@ import math
 import numpy as np
 import tensorflow as tf
 
-from config import GPTConfig
+from teligence.config import GPTConfig
 
 
 INIT = tf.keras.initializers.RandomNormal(mean=0.0, stddev=0.08)

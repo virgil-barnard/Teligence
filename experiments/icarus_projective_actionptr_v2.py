@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-icarus_projective_actionptr_v2.py
+experiments/icarus_projective_actionptr_v2.py
 
 TensorFlow + ExplicitGPT version of the projective action-pointer prototype.
 
@@ -20,6 +20,7 @@ import json
 import math
 import os
 import random
+import sys
 import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -27,8 +28,12 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 import tensorflow as tf
 
-from config import GPTConfig, validate_config
-from modeling import ExplicitGPT, set_precision
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+from teligence.config import GPTConfig, validate_config
+from teligence.modeling import ExplicitGPT, set_precision
 
 
 @dataclass
@@ -75,7 +80,7 @@ class Config:
     flash_q_block: int = 128
     flash_k_block: int = 128
 
-    out_dir: str = "out_icarus_projective_v2"
+    out_dir: str = "runs/icarus_projective_v2"
     checkpoint_name: str = "icarus_projective_actionptr_v2"
 
 
@@ -97,8 +102,8 @@ def render_progress(tag: str, current: int, total: int, start_time: float, done:
     bar = "#" * filled + "-" * (width - filled)
     elapsed = time.time() - start_time
     msg = f"[{tag}] [{bar}] {current:>6d}/{total:<6d} ({100.0 * frac:5.1f}%) {elapsed:6.1f}s"
-    end = "\n" if done else "\r"
-    print(msg, end=end, flush=True)
+    # Use newline output for stable logs under Docker/compose capture.
+    print(msg, flush=True)
 
 
 class SimpleTokenizer:
@@ -219,6 +224,8 @@ class ProjectiveEngine:
         return (pt[2] % self.p) == 0
 
     def parallel(self, l1: LineH, l2: LineH) -> bool:
+        if l1 == l2:
+            return False
         try:
             m = self.meet(l1, l2)
         except ValueError:
@@ -430,12 +437,18 @@ class ProofEnv:
                 _, p1, p2, lname = toks
                 if lname in self.lines or p1 not in self.points or p2 not in self.points or p1 == p2:
                     return False
-                self.lines[lname] = self.engine.line_through(self.points[p1], self.points[p2])
+                line = self.engine.line_through(self.points[p1], self.points[p2])
+                if line in self.lines.values():
+                    return False
+                self.lines[lname] = line
             elif op == "CONSTRUCT_PARALLEL_THROUGH":
                 _, pname, lsrc, lnew = toks
                 if lnew in self.lines or pname not in self.points or lsrc not in self.lines:
                     return False
-                self.lines[lnew] = self.engine.parallel_through(self.points[pname], self.lines[lsrc])
+                line = self.engine.parallel_through(self.points[pname], self.lines[lsrc])
+                if line in self.lines.values():
+                    return False
+                self.lines[lnew] = line
             elif op == "CONSTRUCT_MEET":
                 _, l1, l2, pname = toks
                 if pname in self.points or l1 not in self.lines or l2 not in self.lines:
@@ -456,6 +469,8 @@ class ProofEnv:
             elif op == "ASSERT_PARALLEL":
                 _, l1, l2 = toks
                 if l1 not in self.lines or l2 not in self.lines:
+                    return False
+                if self.lines[l1] == self.lines[l2]:
                     return False
                 if not self.engine.parallel(self.lines[l1], self.lines[l2]):
                     return False
@@ -1051,10 +1066,16 @@ def rollout_best_first_trace(model, tok, codec, engine, task, max_T, max_A, cfg:
     heap: List[_Node] = []
     heapq.heappush(heap, _Node(priority=cfg.search_value_weight * v0, neglogp=0.0, depth=0, env=root))
     expansions = 0
+    best_env = root
+    best_depth = 0
 
     while heap and expansions < cfg.search_max_expansions:
         node = heapq.heappop(heap)
         env = node.env
+        depth_here = len(env.history)
+        if depth_here > best_depth:
+            best_depth = depth_here
+            best_env = env
         if env.done and env.success():
             return True, env
         if node.depth >= max_depth:
@@ -1075,10 +1096,14 @@ def rollout_best_first_trace(model, tok, codec, engine, task, max_T, max_A, cfg:
             child = env.clone()
             if not child.execute(action):
                 continue
+            child_depth = len(child.history)
+            if child_depth > best_depth:
+                best_depth = child_depth
+                best_env = child
             neglogp = node.neglogp + float(-lp)
             priority = neglogp + cfg.search_value_weight * child_h
             heapq.heappush(heap, _Node(priority=priority, neglogp=neglogp, depth=node.depth + 1, env=child))
-    return False, root
+    return False, best_env
 
 
 def train(cfg: Config, resume_checkpoint: str = ""):
@@ -1179,15 +1204,43 @@ def train(cfg: Config, resume_checkpoint: str = ""):
     hardest_task = None
     hardest_env = None
     hardest_steps = -1
-    for _ in range(10):
+    task_stats = {name: {"attempts": 0, "solved": 0, "steps_all": 0, "steps_solved": 0} for name in cfg.task_mix}
+    quick_rollouts = 10
+    quick_t0 = time.time()
+    for i in range(quick_rollouts):
         task = factory.sample(random.choice(cfg.task_mix))
         ok, env = rollout_best_first_trace(model, tok, codec, engine, task, max_T, max_A, cfg, verbose=False)
         successes += int(ok)
+        steps = len(env.history) if env is not None else 0
+        rec = task_stats[task.name]
+        rec["attempts"] += 1
+        rec["steps_all"] += steps
+        if ok:
+            rec["solved"] += 1
+            rec["steps_solved"] += steps
+        print(f"[quick rollout] {i+1}/{quick_rollouts} task={task.name} solved={ok} steps={steps}")
+        render_progress("quick_rollout", i + 1, quick_rollouts, quick_t0, done=(i + 1) == quick_rollouts)
         if ok and env is not None and len(env.history) > hardest_steps:
             hardest_steps = len(env.history)
             hardest_task = task
             hardest_env = env
     print(f"search success@10 = {successes}/10")
+
+    print("\n--- quick rollout synopsis by task ---")
+    for task_name in sorted(task_stats):
+        rec = task_stats[task_name]
+        attempts = rec["attempts"]
+        if attempts == 0:
+            continue
+        solved = rec["solved"]
+        solve_rate = solved / attempts
+        avg_steps_all = rec["steps_all"] / attempts
+        avg_steps_solved = (rec["steps_solved"] / solved) if solved > 0 else float("nan")
+        solved_steps = f"{avg_steps_solved:.2f}" if solved > 0 else "-"
+        print(
+            f"{task_name:26s} attempts={attempts:2d} solved={solved:2d} "
+            f"solve_rate={solve_rate:.2f} avg_steps_all={avg_steps_all:.2f} avg_steps_solved={solved_steps}"
+        )
 
     if hardest_task is not None and hardest_env is not None:
         print("\n--- hardest solved rollout ---")
@@ -1238,12 +1291,14 @@ def load_checkpoint(out_dir: str, checkpoint: str, device: str):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--mode", choices=["train", "rollout"], default="train")
+    p.add_argument("--quick", action="store_true")
     p.add_argument("--checkpoint", type=str, default="")
     p.add_argument("--rollout_mode", choices=["greedy", "search"], default="search")
     p.add_argument("--demo_tasks", type=int, default=5)
     p.add_argument("--train_instances", type=int, default=CFG.train_instances)
     p.add_argument("--val_instances", type=int, default=CFG.val_instances)
     p.add_argument("--max_iters", type=int, default=CFG.max_iters)
+    p.add_argument("--eval_interval", type=int, default=CFG.eval_interval)
     p.add_argument("--batch_size", type=int, default=CFG.batch_size)
     p.add_argument("--eval_batches", type=int, default=CFG.eval_batches)
     p.add_argument("--search_max_expansions", type=int, default=CFG.search_max_expansions)
@@ -1253,10 +1308,33 @@ def main():
     p.add_argument("--resume_checkpoint", type=str, default="")
     args = p.parse_args()
 
+    if args.quick:
+        # Apply fast sanity-run defaults when corresponding flags are untouched.
+        if args.train_instances == CFG.train_instances:
+            args.train_instances = 1000
+        if args.val_instances == CFG.val_instances:
+            args.val_instances = 200
+        if args.max_iters == CFG.max_iters:
+            args.max_iters = 200
+        if args.eval_interval == CFG.eval_interval:
+            args.eval_interval = 100
+        if args.eval_batches == CFG.eval_batches:
+            args.eval_batches = 10
+        if args.batch_size == CFG.batch_size:
+            args.batch_size = 32
+        if args.demo_tasks == 5:
+            args.demo_tasks = 3
+        if args.search_max_expansions == CFG.search_max_expansions:
+            args.search_max_expansions = 128
+        if args.search_topk_actions == CFG.search_topk_actions:
+            args.search_topk_actions = 3
+        print("[quick] enabled fast sanity defaults")
+
     cfg = Config()
     cfg.train_instances = args.train_instances
     cfg.val_instances = args.val_instances
     cfg.max_iters = args.max_iters
+    cfg.eval_interval = args.eval_interval
     cfg.batch_size = args.batch_size
     cfg.eval_batches = args.eval_batches
     cfg.search_max_expansions = args.search_max_expansions
@@ -1282,6 +1360,7 @@ def main():
         cfg2, tok, codec, model, engine, factory, max_T, max_A = load_checkpoint(cfg.out_dir, checkpoint, "cpu")
 
         successes = 0
+        task_stats = {name: {"attempts": 0, "solved": 0} for name in cfg2.task_mix}
         for _ in range(args.demo_tasks):
             task = factory.sample(random.choice(cfg2.task_mix))
             if args.rollout_mode == "greedy":
@@ -1289,7 +1368,19 @@ def main():
             else:
                 ok = rollout_best_first(model, tok, codec, engine, task, max_T, max_A, cfg2, verbose=True)
             successes += int(ok)
+            rec = task_stats[task.name]
+            rec["attempts"] += 1
+            rec["solved"] += int(ok)
         print(f"{args.rollout_mode} success rate: {successes}/{args.demo_tasks}")
+        print("rollout synopsis by task:")
+        for task_name in sorted(task_stats):
+            rec = task_stats[task_name]
+            if rec["attempts"] == 0:
+                continue
+            print(
+                f"  {task_name:26s} solved={rec['solved']:2d}/{rec['attempts']:2d} "
+                f"({rec['solved'] / rec['attempts']:.2f})"
+            )
 
 
 if __name__ == "__main__":

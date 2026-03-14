@@ -14,9 +14,9 @@ services:
       ATTN_VIZ_EVERY: "50"
     volumes:
       - ./:/app
-    command: ["python", "launcher.py"]
+    command: ["python", "scripts/launcher.py"]
 
-  proof_agent:
+  proof_math:
     image: teligence-gpt:latest
     build:
       context: .
@@ -26,12 +26,12 @@ services:
     tty: true
     profiles: ["proof"]
     environment:
-      APP_ENTRY: "proof_agent"
+      APP_ENTRY: "proof_math"
     volumes:
       - ./:/app
-    command: ["python", "launcher.py"]
+    command: ["python", "scripts/launcher.py"]
 
-  icarus_projective_v2:
+  icarus_affine:
     image: teligence-gpt:latest
     build:
       context: .
@@ -41,10 +41,10 @@ services:
     tty: true
     profiles: ["icarus"]
     environment:
-      APP_ENTRY: "icarus_projective_v2"
+      APP_ENTRY: "icarus_affine"
     volumes:
       - ./:/app
-    command: ["python", "launcher.py"]
+    command: ["python", "scripts/launcher.py"]
 
   tensorboard:
     image: teligence-gpt:latest

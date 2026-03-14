@@ -1,6 +1,6 @@
 
 """
-proof_gpt_agent_onefile.py
+proof_rewrite_gpt.py
 
 A single-file, explicit, desktop-scale demo of:
 
@@ -19,7 +19,7 @@ A single-file, explicit, desktop-scale demo of:
    - Evaluate by rolling out the model in the environment and measuring solve rate
 
 Run:
-  python proof_gpt_agent_onefile.py --help
+  python experiments/proof_rewrite_gpt.py --help
 
 Notes:
 - This is intentionally minimal and explicit (Karpathy-ish), not maximally optimized.
@@ -35,14 +35,19 @@ from dataclasses import dataclass
 import math
 import os
 import random
+import sys
 import time
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 import tensorflow as tf
 
-from config import GPTConfig, validate_config
-from modeling import ExplicitGPT, set_precision
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+from teligence.config import GPTConfig, validate_config
+from teligence.modeling import ExplicitGPT, set_precision
 
 # -----------------------------------------------------------------------------
 # Reproducibility
@@ -1070,7 +1075,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", type=str, default="train", choices=["train", "eval", "sample"])
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--ckpt", type=str, default="proof_gpt_ckpt")
+    parser.add_argument("--run_name", type=str, default="proof_rewrite_gpt")
+    parser.add_argument("--runs_dir", type=str, default="runs")
+    parser.add_argument("--ckpt", type=str, default="")
     # quick knobs
     parser.add_argument("--train_steps", type=int, default=2000)
     parser.add_argument("--batch_size", type=int, default=32)
@@ -1133,6 +1140,9 @@ def main():
     flash_block = 128
     while flash_block > 1 and (args.seq_len % flash_block != 0):
         flash_block //= 2
+    run_dir = os.path.join(args.runs_dir, args.run_name)
+    ckpt_dir = args.ckpt.strip() if args.ckpt.strip() else os.path.join(run_dir, "ckpt_last")
+
     cfg = GPTConfig(
         vocab_size=len(vocab.id_to_token),
         seq_len=args.seq_len,
@@ -1153,7 +1163,7 @@ def main():
         eval_every=200,
         eval_tokens=1024,
         save_every=0,
-        runs_dir="./runs_test",
+        runs_dir=args.runs_dir,
     )
     validate_config(cfg)
     set_precision(cfg.use_bf16)
@@ -1164,7 +1174,7 @@ def main():
     _ = model(dummy)
 
     ckpt = tf.train.Checkpoint(model=model)
-    manager = tf.train.CheckpointManager(ckpt, directory=args.ckpt, max_to_keep=3)
+    manager = tf.train.CheckpointManager(ckpt, directory=ckpt_dir, max_to_keep=3)
 
     if manager.latest_checkpoint:
         ckpt.restore(manager.latest_checkpoint)
@@ -1192,6 +1202,7 @@ def main():
     )
 
     print(
+        f"run_name={args.run_name} run_dir={run_dir} ckpt_dir={ckpt_dir} "
         f"proof run config | seq_len={train_cfg.seq_len} batch={train_cfg.batch_size} "
         f"steps={train_cfg.train_steps} eval_every={train_cfg.eval_every} "
         f"eval_episodes={train_cfg.eval_episodes} lr={train_cfg.lr:.2e} "

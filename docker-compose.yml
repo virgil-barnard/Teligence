@@ -31,6 +31,21 @@ services:
       - ./:/app
     command: ["python", "launcher.py"]
 
+  icarus_projective_v2:
+    image: teligence-gpt:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    gpus: all
+    stdin_open: true
+    tty: true
+    profiles: ["icarus"]
+    environment:
+      APP_ENTRY: "icarus_projective_v2"
+    volumes:
+      - ./:/app
+    command: ["python", "launcher.py"]
+
   tensorboard:
     image: teligence-gpt:latest
     depends_on:

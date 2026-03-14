@@ -50,6 +50,19 @@ docker compose run --rm \
 docker compose --profile proof run --rm proof_agent
 ```
 
+- Run the projective action-pointer prototype (TensorFlow backbone):
+
+```bash
+docker compose run --rm -e APP_ENTRY=icarus_projective_v2 gpt
+docker compose run --rm -e APP_ENTRY=icarus_projective_v2 -e APP_ARGS="--mode rollout --rollout_mode search --demo_tasks 5" gpt
+```
+
+- Optional dedicated compose service for Icarus prototype:
+
+```bash
+docker compose --profile icarus run --rm icarus_projective_v2
+```
+
 ### Text datasets
 
 Supported `DATASET` values:

@@ -7,6 +7,7 @@ import sys
 ENTRYPOINTS = {
     "gpt": "gpt.py",
     "proof_agent": "proof_gpt_agent_onefile.py",
+    "icarus_projective_v2": "icarus_projective_actionptr_v2.py",
 }
 
 

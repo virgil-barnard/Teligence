@@ -57,6 +57,7 @@ class Config:
     warmup_steps: int = 200
     weight_decay: float = 1e-2
     grad_clip: float = 1.0
+    grad_accum_steps: int = 1
     value_loss_weight: float = 0.2
     rollout_max_steps_slack: int = 3
     search_max_expansions: int = 256
@@ -100,16 +101,17 @@ def lr_schedule(step: int, cfg: Config) -> float:
 
 
 @tf.function(jit_compile=False, reduce_retracing=True)
-def train_step(model, opt, x, ls, lm, y, v, grad_clip):
+def train_micro_step(model, x, ls, lm, y, v):
     with tf.GradientTape() as tape:
         _, _, loss, _, _ = model.forward_actions(x, ls, lm, targets=y, value_targets=v, training=True)
     grads = tape.gradient(loss, model.trainable_variables)
-    grads_vars = [(g, var) for g, var in zip(grads, model.trainable_variables) if g is not None]
-    if grads_vars:
-        gvals = [g for g, _ in grads_vars]
-        gvals, _ = tf.clip_by_global_norm(gvals, grad_clip)
-        opt.apply_gradients(zip(gvals, [var for _, var in grads_vars]))
-    return loss
+    safe_grads = []
+    for g, var in zip(grads, model.trainable_variables):
+        if g is None:
+            safe_grads.append(tf.zeros_like(var))
+        else:
+            safe_grads.append(tf.where(tf.math.is_finite(g), g, tf.zeros_like(g)))
+    return loss, safe_grads
 
 
 @tf.function(jit_compile=False, reduce_retracing=True)
@@ -240,6 +242,7 @@ def train(cfg: Config, resume_checkpoint: str = ""):
             "eval_interval": cfg.eval_interval,
             "eval_batches": cfg.eval_batches,
             "batch_size": cfg.batch_size,
+            "grad_accum_steps": cfg.grad_accum_steps,
             "out_dir": cfg.out_dir,
         }
     )
@@ -273,6 +276,7 @@ def train(cfg: Config, resume_checkpoint: str = ""):
     t0 = time.time()
     timer_state = {"t0": time.time()}
     grad_clip_t = tf.constant(cfg.grad_clip, dtype=tf.float32)
+    grad_accums = [tf.Variable(tf.zeros_like(v), trainable=False) for v in model.trainable_variables]
     for it in range(start_it, cfg.max_iters + 1):
         step_var.assign(it)
         if should_eval(it, cfg.max_iters, cfg.eval_interval):
@@ -307,16 +311,30 @@ def train(cfg: Config, resume_checkpoint: str = ""):
                 }
             )
 
-        x, ls, lm, y, v = train_ds.sample_batch(cfg.batch_size)
         lr = lr_schedule(it, cfg)
         assign_optimizer_lr(opt, lr)
-        loss = train_step(model, opt, x, ls, lm, y, v, grad_clip_t)
+        micro_losses = []
+        for _ in range(cfg.grad_accum_steps):
+            x, ls, lm, y, v = train_ds.sample_batch(cfg.batch_size)
+            micro_loss, micro_grads = train_micro_step(model, x, ls, lm, y, v)
+            micro_losses.append(float(micro_loss.numpy()))
+            for ga, g in zip(grad_accums, micro_grads):
+                ga.assign_add(tf.cast(g, ga.dtype))
+
+        denom = tf.cast(cfg.grad_accum_steps, tf.float32)
+        avg_grads_f32 = [tf.cast(ga, tf.float32) / denom for ga in grad_accums]
+        avg_grads_f32, _ = tf.clip_by_global_norm(avg_grads_f32, grad_clip_t)
+        cast_grads = [tf.cast(g, v.dtype) for g, v in zip(avg_grads_f32, model.trainable_variables)]
+        opt.apply_gradients(zip(cast_grads, model.trainable_variables))
+        for ga in grad_accums:
+            ga.assign(tf.zeros_like(ga))
+        loss = sum(micro_losses) / max(1, len(micro_losses))
         apply_weight_decay(model.trainable_variables, lr, cfg.weight_decay)
         maybe_print_train_step(
             step_value=it,
             end_step_value=cfg.max_iters,
             print_every=100,
-            loss_value=float(loss.numpy()),
+            loss_value=float(loss),
             lr_value=lr,
             timer_state=timer_state,
             prefix="update",
@@ -327,7 +345,7 @@ def train(cfg: Config, resume_checkpoint: str = ""):
                     "event": "train",
                     "update": it,
                     "num_updates": cfg.max_iters,
-                    "loss": float(loss.numpy()),
+                    "loss": float(loss),
                     "lr": float(lr),
                 }
             )
@@ -454,6 +472,7 @@ def main():
     p.add_argument("--eval_interval", "--eval_every", dest="eval_interval", type=int, default=CFG.eval_interval)
     p.add_argument("--batch_size", type=int, default=CFG.batch_size)
     p.add_argument("--eval_batches", type=int, default=CFG.eval_batches)
+    p.add_argument("--grad_accum_steps", type=int, default=CFG.grad_accum_steps)
     p.add_argument("--search_max_expansions", type=int, default=CFG.search_max_expansions)
     p.add_argument("--search_topk_actions", type=int, default=CFG.search_topk_actions)
     p.add_argument("--search_value_weight", type=float, default=CFG.search_value_weight)
@@ -487,6 +506,7 @@ def main():
         eval_interval=args.eval_interval,
         batch_size=args.batch_size,
         eval_batches=args.eval_batches,
+        grad_accum_steps=max(1, args.grad_accum_steps),
         search_max_expansions=args.search_max_expansions,
         search_topk_actions=args.search_topk_actions,
         search_value_weight=args.search_value_weight,

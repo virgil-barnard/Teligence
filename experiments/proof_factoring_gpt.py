@@ -63,6 +63,8 @@ class TrainConfig:
     curriculum_max_nodes: int = 63
     curriculum_max_steps: int = 12
     curriculum_mix_levels: bool = True
+    grad_accum_steps: int = 1
+    grad_clip: float = 1.0
 
 
 def make_dataset(vocab: Vocab, rules, gym_cfg: ProofGymConfig, train_cfg: TrainConfig) -> tf.data.Dataset:
@@ -120,7 +122,7 @@ def lr_schedule(step: int, cfg: TrainConfig) -> float:
 
 
 @tf.function(jit_compile=False)
-def train_step(model: tf.keras.Model, opt: tf.keras.optimizers.Optimizer, x: tf.Tensor, loss_mask: tf.Tensor) -> tf.Tensor:
+def train_micro_step(model: tf.keras.Model, x: tf.Tensor, loss_mask: tf.Tensor) -> tuple[tf.Tensor, list[tf.Tensor]]:
     with tf.GradientTape() as tape:
         logits = model(x, training=True)
         y = x[:, 1:]
@@ -130,9 +132,13 @@ def train_step(model: tf.keras.Model, opt: tf.keras.optimizers.Optimizer, x: tf.
         loss = tf.reduce_sum(ce * lm) / tf.maximum(1.0, tf.reduce_sum(lm))
 
     grads = tape.gradient(loss, model.trainable_variables)
-    grads_and_vars = [(g, v) for g, v in zip(grads, model.trainable_variables) if g is not None]
-    opt.apply_gradients(grads_and_vars)
-    return loss
+    safe_grads: list[tf.Tensor] = []
+    for g, v in zip(grads, model.trainable_variables):
+        if g is None:
+            safe_grads.append(tf.zeros_like(v))
+        else:
+            safe_grads.append(tf.where(tf.math.is_finite(g), g, tf.zeros_like(g)))
+    return loss, safe_grads
 
 
 def policy_rollout(
@@ -318,6 +324,8 @@ def main():
     parser.add_argument("--eval_every", "--eval_interval", dest="eval_every", type=int, default=200)
     parser.add_argument("--eval_episodes", type=int, default=200)
     parser.add_argument("--print_every", type=int, default=50)
+    parser.add_argument("--grad_accum_steps", type=int, default=1)
+    parser.add_argument("--grad_clip", type=float, default=1.0)
     parser.add_argument("--warmup_steps", type=int, default=100)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--min_lr", type=float, default=3e-5)
@@ -415,6 +423,8 @@ def main():
         eval_every=args.eval_every,
         eval_episodes=args.eval_episodes,
         print_every=args.print_every,
+        grad_accum_steps=max(1, args.grad_accum_steps),
+        grad_clip=args.grad_clip,
         profile=args.profile,
         trace_eval=args.trace_eval,
         eval_show_examples=args.eval_show_examples,
@@ -444,6 +454,7 @@ def main():
             "event": "run_start",
             "seq_len": train_cfg.seq_len,
             "batch_size": train_cfg.batch_size,
+            "grad_accum_steps": train_cfg.grad_accum_steps,
             "train_steps": train_cfg.train_steps,
             "eval_every": train_cfg.eval_every,
             "eval_episodes": train_cfg.eval_episodes,
@@ -482,18 +493,31 @@ def main():
     ds = make_dataset(vocab, rules, gym_cfg, train_cfg)
     it = iter(ds)
     timer_state = {"t0": time.time()}
+    grad_accums = [tf.Variable(tf.zeros_like(v), trainable=False) for v in model.trainable_variables]
 
     best_solve_rate = float("-inf")
     for step in range(train_cfg.train_steps):
         step_value = step + 1
-        batch_ids, batch_mask = next(it)
-        x = batch_ids[:, 0, :]
-        lm = batch_mask
-
         lr_step = lr_schedule(step, train_cfg)
         assign_optimizer_lr(opt, lr_step)
+        micro_losses = []
+        for _ in range(train_cfg.grad_accum_steps):
+            batch_ids, batch_mask = next(it)
+            x = batch_ids[:, 0, :]
+            lm = batch_mask
+            micro_loss, micro_grads = train_micro_step(model, x, lm)
+            micro_losses.append(float(micro_loss.numpy()))
+            for ga, g in zip(grad_accums, micro_grads):
+                ga.assign_add(tf.cast(g, ga.dtype))
 
-        loss = train_step(model, opt, x, lm)
+        denom = tf.cast(train_cfg.grad_accum_steps, tf.float32)
+        avg_grads_f32 = [tf.cast(ga, tf.float32) / denom for ga in grad_accums]
+        avg_grads_f32, _ = tf.clip_by_global_norm(avg_grads_f32, train_cfg.grad_clip)
+        cast_grads = [tf.cast(g, v.dtype) for g, v in zip(avg_grads_f32, model.trainable_variables)]
+        opt.apply_gradients(zip(cast_grads, model.trainable_variables))
+        for ga in grad_accums:
+            ga.assign(tf.zeros_like(ga))
+        loss = sum(micro_losses) / max(1, len(micro_losses))
 
         lr_now = float(tf.convert_to_tensor(opt.learning_rate).numpy())
         maybe_print_train_step(

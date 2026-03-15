@@ -17,9 +17,10 @@ def set_global_seed(seed: int) -> None:
 
 
 def cosine_lr(step: int, base_lr: float, min_lr: float, warmup_steps: int, total_steps: int) -> float:
-    if step < warmup_steps:
-        return base_lr * (step + 1) / max(1, warmup_steps)
-    t = (step - warmup_steps) / max(1, (total_steps - warmup_steps))
+    warm = min(warmup_steps, max(1, total_steps))
+    if step < warm:
+        return base_lr * (step + 1) / max(1, warm)
+    t = (step - warm) / max(1, (total_steps - warm))
     t = min(1.0, max(0.0, t))
     cos = 0.5 * (1.0 + math.cos(math.pi * t))
     return min_lr + (base_lr - min_lr) * cos

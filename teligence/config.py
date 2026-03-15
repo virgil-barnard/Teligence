@@ -2,6 +2,10 @@ import os
 from dataclasses import dataclass
 
 
+def _env_flag(name: str, default: str) -> bool:
+    return os.environ.get(name, default).strip() == "1"
+
+
 @dataclass
 class GPTConfig:
     vocab_size: int
@@ -39,10 +43,10 @@ class GPTConfig:
     tie_embeddings: bool = True
 
     # compute
-    use_bf16: bool = True
+    use_bf16: bool = _env_flag("USE_BF16", "1")
 
     # flash attention
-    use_flash_attn: bool = True
+    use_flash_attn: bool = _env_flag("USE_FLASH_ATTN", "1")
     flash_q_block: int = 128
     flash_k_block: int = 128
 

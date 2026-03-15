@@ -10,6 +10,15 @@ This directory contains scaffolding for an autoresearch-style workflow tailored 
 
 ## Initialize a run ledger
 
+If you are running locally (not Docker), first set up a virtualenv from repo root:
+
+```bash
+py -3.12 -m venv .venv
+.venv\Scripts\activate
+python -m pip install --upgrade pip
+python -m pip install -e .
+```
+
 ```bash
 python scripts/autoresearch_loop.py init
 ```

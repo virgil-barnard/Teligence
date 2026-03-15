@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "teligence"
+version = "0.1.0"
+description = "TensorFlow GPT experimentation lab for text and proof-control tasks"
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "numpy<2",
+    "tensorflow==2.16.1",
+]
+
+[tool.setuptools.packages.find]
+include = ["teligence*"]
+
+[project.scripts]
+teligence-autoresearch = "scripts.autoresearch_loop:main"

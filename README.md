@@ -76,6 +76,26 @@ If image already exists:
 docker compose up
 ```
 
+## Local virtualenv setup (pip-installable)
+
+For local runs outside Docker, install the project into a virtual environment:
+
+```bash
+py -3.12 -m venv .venv
+.venv\Scripts\activate
+python -m pip install --upgrade pip
+python -m pip install -e .
+```
+
+Notes:
+
+- TensorFlow 2.16.1 currently requires Python `<3.13`.
+- After installation, run scripts from the repo root, for example:
+
+```bash
+python scripts/autoresearch_loop.py leaderboard
+```
+
 ## Unified startup options
 
 The launcher is the single entry path:
@@ -126,6 +146,11 @@ Use these knobs to override paths:
 - text: `RUN_NAME`, `RUNS_DIR`
 - proof: `--run_name`, `--runs_dir`, `--ckpt`
 - icarus: `--out_dir`, `--resume_checkpoint`
+
+Useful local CPU precision/perf toggles for text/proof runs:
+
+- `USE_BF16=0` to force fp32 compute
+- `USE_FLASH_ATTN=0` to disable flash-attention path
 
 CLI naming is now aligned across experiment scripts:
 

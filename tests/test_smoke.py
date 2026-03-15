@@ -79,6 +79,7 @@ class SmokeTests(unittest.TestCase):
         self.assertTrue(np.isfinite(float(loss.numpy())))
         self.assertTrue(np.isfinite(float(gnorm.numpy())))
         self.assertTrue(np.isfinite(float(lr.numpy())))
+        self.assertGreater(float(lr.numpy()), 0.0)
         self.assertTrue(bool(updated.numpy()))
 
         tokens = np.arange(512, dtype=np.int32) % cfg.vocab_size

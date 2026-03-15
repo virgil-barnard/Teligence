@@ -13,7 +13,7 @@ def lr_schedule(cfg: GPTConfig, update_step_int64):
     step = tf.cast(update_step_int64, tf.float32)
     warm = tf.cast(cfg.warmup_steps, tf.float32)
     total = tf.cast(cfg.num_updates, tf.float32)
-    warm_lr = cfg.base_lr * (step / tf.maximum(1.0, warm))
+    warm_lr = cfg.base_lr * ((step + 1.0) / tf.maximum(1.0, warm))
     progress = (step - warm) / tf.maximum(1.0, total - warm)
     progress = tf.clip_by_value(progress, 0.0, 1.0)
     cosine = 0.5 * (1.0 + tf.cos(math.pi * progress))

@@ -319,6 +319,7 @@ def main():
     parser.add_argument("--eval_episodes", type=int, default=200)
     parser.add_argument("--print_every", type=int, default=50)
     parser.add_argument("--warmup_steps", type=int, default=100)
+    parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--min_lr", type=float, default=3e-5)
     parser.add_argument("--profile", action="store_true")
     parser.add_argument("--trace_eval", action="store_true")
@@ -408,6 +409,7 @@ def main():
         seq_len=args.seq_len,
         batch_size=args.batch_size,
         train_steps=args.train_steps,
+        lr=args.lr,
         min_lr=args.min_lr,
         warmup_steps=args.warmup_steps,
         eval_every=args.eval_every,

@@ -7,6 +7,7 @@ from teligence.config import GPTConfig, validate_config
 from teligence.data_utils import iter_eval_batches, make_random_window_dataset
 from teligence.modeling import ExplicitGPT, set_precision
 from teligence.tokenizer import ByteTokenizer, CharTokenizer
+from teligence.experiment_utils import cosine_lr
 from teligence.train_utils import build_train_micro_step, build_train_state, evaluate_model, lr_schedule
 
 
@@ -108,6 +109,13 @@ class SmokeTests(unittest.TestCase):
         self.assertGreater(lr0, 0.0)
         self.assertLess(lr0, cfg.base_lr)
         self.assertLessEqual(lr10, cfg.base_lr)
+
+    def test_cosine_lr_caps_warmup_for_short_runs(self):
+        lr0 = cosine_lr(step=0, base_lr=1e-3, min_lr=1e-4, warmup_steps=200, total_steps=20)
+        lr19 = cosine_lr(step=19, base_lr=1e-3, min_lr=1e-4, warmup_steps=200, total_steps=20)
+        self.assertGreater(lr0, 0.0)
+        self.assertLessEqual(lr0, 1e-3)
+        self.assertAlmostEqual(lr19, 1e-3, places=12)
 
 if __name__ == "__main__":
     unittest.main()

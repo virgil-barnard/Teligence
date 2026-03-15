@@ -12,7 +12,7 @@ from teligence.data_utils import iter_eval_batches
 def lr_schedule(cfg: GPTConfig, update_step_int64):
     step = tf.cast(update_step_int64, tf.float32)
     total = tf.cast(cfg.num_updates, tf.float32)
-    warm = tf.minimum(tf.cast(cfg.warmup_steps, tf.float32), total)
+    warm = tf.minimum(tf.cast(cfg.warmup_steps, tf.float32), tf.maximum(1.0, 0.5 * total))
     warm_lr = cfg.base_lr * ((step + 1.0) / tf.maximum(1.0, warm))
     progress = (step - warm) / tf.maximum(1.0, total - warm)
     progress = tf.clip_by_value(progress, 0.0, 1.0)

@@ -7,7 +7,7 @@ from teligence.config import GPTConfig, validate_config
 from teligence.data_utils import iter_eval_batches, make_random_window_dataset
 from teligence.modeling import ExplicitGPT, set_precision
 from teligence.tokenizer import ByteTokenizer, CharTokenizer
-from teligence.train_utils import build_train_micro_step, build_train_state, evaluate_model
+from teligence.train_utils import build_train_micro_step, build_train_state, evaluate_model, lr_schedule
 
 
 class SmokeTests(unittest.TestCase):
@@ -97,6 +97,17 @@ class SmokeTests(unittest.TestCase):
         byte_tok = ByteTokenizer()
         b_ids = byte_tok.encode_text("hello")
         self.assertEqual(byte_tok.decode_ids(b_ids), "hello")
+
+    def test_lr_schedule_caps_warmup_for_short_runs(self):
+        cfg = self._tiny_cfg()
+        cfg.num_updates = 20
+        cfg.warmup_steps = 200
+
+        lr0 = float(lr_schedule(cfg, tf.constant(0, dtype=tf.int64)).numpy())
+        lr10 = float(lr_schedule(cfg, tf.constant(10, dtype=tf.int64)).numpy())
+        self.assertGreater(lr0, 0.0)
+        self.assertLess(lr0, cfg.base_lr)
+        self.assertLessEqual(lr10, cfg.base_lr)
 
 if __name__ == "__main__":
     unittest.main()
